@@ -1,0 +1,374 @@
+import { useState } from 'react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { Check, Loader2, Pencil, Plus, Trash2 } from 'lucide-react'
+
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { CurrencyInput } from '@/components/ui/currency-input'
+import { Dialog } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
+import { useAdminPlans } from '@/hooks/queries/useAdminPlans'
+import {
+  createPlan,
+  deletePlan,
+  updatePlan,
+  type CreatePlanInput,
+} from '@/services/admin'
+import { formatCurrencyBRL } from '@/lib/utils'
+import type { BillingInterval, Plan } from '@/types/admin'
+
+export function AdminPlansPage() {
+  const { data: plans, isLoading } = useAdminPlans()
+  const [editing, setEditing] = useState<Plan | null>(null)
+  const [creating, setCreating] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<Plan | null>(null)
+  const queryClient = useQueryClient()
+  const [err, setErr] = useState<string | null>(null)
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['admin', 'plans'] })
+
+  const removeMut = useMutation({
+    mutationFn: (planId: string) => deletePlan(planId),
+    onSuccess: () => {
+      setDeleteTarget(null)
+      setErr(null)
+      invalidate()
+    },
+    onError: (e: Error) => setErr(e.message),
+  })
+
+  return (
+    <div className="space-y-6">
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Planos</h1>
+          <p className="text-sm text-muted-foreground">
+            Catálogo de assinaturas disponíveis para os profissionais.
+          </p>
+        </div>
+        <Button onClick={() => setCreating(true)}>
+          <Plus className="h-4 w-4" />
+          Novo plano
+        </Button>
+      </header>
+
+      {err && (
+        <div className="rounded-md border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive">
+          {err}
+        </div>
+      )}
+
+      {isLoading ? (
+        <Card>
+          <CardContent className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Carregando...
+          </CardContent>
+        </Card>
+      ) : !plans || plans.length === 0 ? (
+        <Card>
+          <CardContent className="py-10 text-center">
+            <p className="text-sm text-muted-foreground">
+              Nenhum plano cadastrado. Crie o primeiro para começar.
+            </p>
+            <Button className="mt-4" onClick={() => setCreating(true)}>
+              <Plus className="h-4 w-4" />
+              Criar primeiro plano
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+          {plans.map((p) => (
+            <Card key={p.id} className={p.active ? '' : 'opacity-60'}>
+              <CardContent className="space-y-3 pt-6">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-lg font-semibold">{p.name}</h3>
+                      {!p.active && (
+                        <span className="rounded-md bg-muted px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                          Inativo
+                        </span>
+                      )}
+                    </div>
+                    <code className="text-xs text-muted-foreground">{p.code}</code>
+                  </div>
+                  <div className="flex gap-1">
+                    <Button variant="ghost" size="icon" onClick={() => setEditing(p)} aria-label="Editar">
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => setDeleteTarget(p)}
+                      aria-label="Excluir"
+                      className="text-destructive hover:text-destructive"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+                <div>
+                  <div className="text-2xl font-semibold tabular-nums">
+                    {formatCurrencyBRL(p.price_cents)}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    por {translateInterval(p.billing_interval)}
+                  </div>
+                </div>
+                {p.description && (
+                  <p className="text-sm text-muted-foreground">{p.description}</p>
+                )}
+                {Array.isArray(p.features) && p.features.length > 0 && (
+                  <ul className="space-y-1 text-xs">
+                    {(p.features as string[]).map((f, i) => (
+                      <li key={i} className="flex items-start gap-2">
+                        <Check className="mt-0.5 h-3 w-3 flex-shrink-0 text-primary" />
+                        <span>{f}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="flex flex-wrap gap-2 border-t pt-3 text-xs text-muted-foreground">
+                  {p.max_services !== null && <span>Serviços: {p.max_services}</span>}
+                  {p.max_appointments_per_month !== null && (
+                    <span>Agendamentos/mês: {p.max_appointments_per_month}</span>
+                  )}
+                  {p.active_subscribers !== undefined && (
+                    <span>Assinantes: {p.active_subscribers}</span>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {creating && (
+        <PlanFormDialog
+          mode="create"
+          onClose={() => setCreating(false)}
+          onSaved={() => {
+            setCreating(false)
+            invalidate()
+          }}
+        />
+      )}
+      {editing && (
+        <PlanFormDialog
+          mode="edit"
+          plan={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null)
+            invalidate()
+          }}
+        />
+      )}
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => deleteTarget && removeMut.mutate(deleteTarget.id)}
+        title="Excluir plano?"
+        description={`O plano "${deleteTarget?.name ?? ''}" será removido. Esta ação não pode ser desfeita.`}
+        confirmLabel="Excluir"
+        destructive
+        loading={removeMut.isPending}
+      />
+    </div>
+  )
+}
+
+function translateInterval(i: string): string {
+  if (i === 'monthly') return 'mês'
+  if (i === 'yearly') return 'ano'
+  return 'vitalício'
+}
+
+interface PlanFormDialogProps {
+  mode: 'create' | 'edit'
+  plan?: Plan
+  onClose: () => void
+  onSaved: () => void
+}
+function PlanFormDialog({ mode, plan, onClose, onSaved }: PlanFormDialogProps) {
+  const [form, setForm] = useState({
+    code: plan?.code ?? '',
+    name: plan?.name ?? '',
+    description: plan?.description ?? '',
+    price_cents: plan?.price_cents ?? 0,
+    billing_interval: (plan?.billing_interval ?? 'monthly') as BillingInterval,
+    features: Array.isArray(plan?.features) ? (plan!.features as string[]).join('\n') : '',
+    max_services: plan?.max_services?.toString() ?? '',
+    max_appointments_per_month: plan?.max_appointments_per_month?.toString() ?? '',
+    active: plan?.active ?? true,
+  })
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setErr(null)
+    setSaving(true)
+    try {
+      const features = form.features
+        .split('\n')
+        .map((s) => s.trim())
+        .filter(Boolean)
+      const payload: CreatePlanInput = {
+        code: form.code,
+        name: form.name,
+        description: form.description || null,
+        price_cents: form.price_cents,
+        billing_interval: form.billing_interval,
+        features,
+        max_services: form.max_services ? Number(form.max_services) : null,
+        max_appointments_per_month: form.max_appointments_per_month
+          ? Number(form.max_appointments_per_month)
+          : null,
+        active: form.active,
+      }
+      if (mode === 'create') {
+        await createPlan(payload)
+      } else if (plan) {
+        await updatePlan({ plan_id: plan.id, ...payload })
+      }
+      onSaved()
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Erro ao salvar.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog
+      open
+      onClose={onClose}
+      title={mode === 'create' ? 'Novo plano' : 'Editar plano'}
+      description="Preço em reais, duração em quantidade de serviços/mês opcionais."
+      size="lg"
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose} disabled={saving}>
+            Cancelar
+          </Button>
+          <Button onClick={(e) => handleSubmit(e as unknown as React.FormEvent)} disabled={saving}>
+            {saving ? 'Salvando...' : 'Salvar plano'}
+          </Button>
+        </>
+      }
+    >
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="plan-code">Código *</Label>
+            <Input
+              id="plan-code"
+              value={form.code}
+              onChange={(e) => setForm({ ...form, code: e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '') })}
+              placeholder="free, pro, business..."
+              required
+              disabled={mode === 'edit'}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="plan-name">Nome *</Label>
+            <Input
+              id="plan-name"
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              required
+            />
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="plan-desc">Descrição</Label>
+          <Textarea
+            id="plan-desc"
+            value={form.description}
+            onChange={(e) => setForm({ ...form, description: e.target.value })}
+            rows={2}
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="plan-price">Preço *</Label>
+            <CurrencyInput
+              id="plan-price"
+              valueCents={form.price_cents}
+              onChangeCents={(cents) => setForm({ ...form, price_cents: cents })}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="plan-interval">Cobrança</Label>
+            <select
+              id="plan-interval"
+              value={form.billing_interval}
+              onChange={(e) => setForm({ ...form, billing_interval: e.target.value as BillingInterval })}
+              className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+            >
+              <option value="monthly">Mensal</option>
+              <option value="yearly">Anual</option>
+              <option value="lifetime">Vitalício</option>
+            </select>
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="plan-features">Benefícios (um por linha)</Label>
+          <Textarea
+            id="plan-features"
+            value={form.features}
+            onChange={(e) => setForm({ ...form, features: e.target.value })}
+            rows={4}
+            placeholder={'Agendamentos ilimitados\nPortfólio em destaque\nSuporte prioritário'}
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="plan-max-serv">Limite de serviços</Label>
+            <Input
+              id="plan-max-serv"
+              type="number"
+              min={0}
+              value={form.max_services}
+              onChange={(e) => setForm({ ...form, max_services: e.target.value })}
+              placeholder="Vazio = sem limite"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="plan-max-appt">Agendamentos/mês</Label>
+            <Input
+              id="plan-max-appt"
+              type="number"
+              min={0}
+              value={form.max_appointments_per_month}
+              onChange={(e) => setForm({ ...form, max_appointments_per_month: e.target.value })}
+              placeholder="Vazio = sem limite"
+            />
+          </div>
+        </div>
+        <div className="flex items-center justify-between rounded-md border p-3">
+          <div>
+            <Label htmlFor="plan-active">Plano ativo</Label>
+            <p className="text-xs text-muted-foreground">
+              Planos inativos ficam ocultos para novos usuários.
+            </p>
+          </div>
+          <Switch
+            id="plan-active"
+            checked={form.active}
+            onCheckedChange={(v) => setForm({ ...form, active: v })}
+          />
+        </div>
+        {err && <p className="text-sm text-destructive">{err}</p>}
+      </form>
+    </Dialog>
+  )
+}

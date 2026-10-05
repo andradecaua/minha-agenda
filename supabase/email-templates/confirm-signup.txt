@@ -1,0 +1,18 @@
+Minha Agenda — Confirme seu e-mail
+
+Olá! Recebemos o cadastro da sua conta na Minha Agenda.
+Para começar a usar, confirme seu e-mail abrindo o link abaixo:
+
+{{ .ConfirmationURL }}
+
+Esse link expira em algumas horas. Depois de confirmar, você já poderá
+entrar e configurar seu perfil, horários e serviços.
+
+----
+Não foi você? Pode ignorar este e-mail — nenhuma conta é criada sem
+confirmação.
+
+Dica: se este e-mail acabou no Spam ou Promoções, marque como "não é
+spam" para receber os próximos sem problema.
+
+Enviado por Minha Agenda · Este é um e-mail automático, não responda.
