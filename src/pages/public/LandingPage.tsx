@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ArrowRight,
@@ -215,7 +215,7 @@ function Hero() {
             <Eyebrow>Agendamento Online · pt-BR</Eyebrow>
 
             <h1
-              className="rise mt-8 font-serif text-[clamp(3rem,8vw,6.75rem)] font-normal leading-[0.95] tracking-[-0.02em] text-foreground"
+              className="rise mt-8 font-serif text-[clamp(2.75rem,7.5vw,6rem)] font-normal leading-[1.05] text-foreground text-balance"
               style={{ animationDelay: '60ms' }}
             >
               A sua agenda,
@@ -300,7 +300,7 @@ function Eyebrow({ children }: { children: React.ReactNode }) {
 function MetricInline({ value, label }: { value: string; label: string }) {
   return (
     <div>
-      <div className="font-serif text-3xl leading-none tracking-tight">
+      <div className="font-serif text-3xl leading-none">
         {value}
       </div>
       <div className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
@@ -344,7 +344,7 @@ function HeroCard() {
               </div>
             </div>
             <div className="min-w-0 flex-1">
-              <div className="font-serif text-xl leading-tight tracking-tight">
+              <div className="font-serif text-xl leading-snug">
                 Ana Silva
               </div>
               <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground">
@@ -410,7 +410,7 @@ function HeroService({
           {dur}
         </div>
       </div>
-      <div className="font-serif text-[18px] tracking-tight">{price}</div>
+      <div className="font-serif text-[18px]">{price}</div>
     </div>
   )
 }
@@ -426,7 +426,7 @@ function Manifesto() {
         <div className="grid gap-10 md:grid-cols-12 md:items-end">
           <div className="md:col-span-7">
             <Eyebrow>Manifesto</Eyebrow>
-            <p className="mt-6 font-serif text-[clamp(1.75rem,3.5vw,2.75rem)] leading-[1.15] tracking-tight text-foreground">
+            <p className="mt-6 font-serif text-[clamp(1.75rem,3.5vw,2.75rem)] leading-[1.25] text-foreground text-balance">
               Você vende tempo.
               <br />
               <span className="italic text-muted-foreground">
@@ -549,7 +549,7 @@ function FeatureCell({
       <div>
         <h3
           className={cn(
-            'font-serif tracking-tight text-foreground',
+            'font-serif leading-snug text-foreground text-balance',
             featured ? 'text-[clamp(1.75rem,3vw,2.5rem)]' : 'text-2xl',
           )}
         >
@@ -588,7 +588,7 @@ function Showcase() {
                 Painel
               </span>
             </div>
-            <h2 className="mt-6 font-serif text-[clamp(2.25rem,4.5vw,3.5rem)] leading-[1.05] tracking-tight">
+            <h2 className="mt-6 font-serif text-[clamp(2.25rem,4.5vw,3.5rem)] leading-[1.15] text-balance">
               Seu dia inteiro,
               <br />
               <span className="italic text-slate-400">
@@ -650,7 +650,7 @@ function DashboardMock() {
               <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-slate-500">
                 Boa tarde,
               </div>
-              <div className="mt-1 font-serif text-3xl leading-tight tracking-tight">
+              <div className="mt-1 font-serif text-3xl leading-snug">
                 Ana.
               </div>
             </div>
@@ -740,7 +740,7 @@ function DarkStat({
       <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-slate-500">
         {label}
       </div>
-      <div className="mt-2 font-serif text-[32px] leading-none tracking-tight">
+      <div className="mt-2 font-serif text-[32px] leading-none">
         {value}
       </div>
       <div className="mt-1.5 text-[11px] text-slate-500">{sub}</div>
@@ -770,7 +770,7 @@ function Process() {
       kicker: 'Enfim',
       title: 'Compartilhe seu link',
       desc: 'Cole no Instagram, WhatsApp, cartão. Clientes agendam, você confirma.',
-      time: '∞',
+      time: 'sem fim',
     },
   ]
   return (
@@ -804,7 +804,7 @@ function Process() {
                 {s.kicker}
               </span>
               <div>
-                <h3 className="font-serif text-[1.75rem] leading-tight tracking-tight sm:text-[2rem]">
+                <h3 className="font-serif text-[1.75rem] leading-snug sm:text-[2rem]">
                   {s.title}
                 </h3>
                 <p className="mt-2 max-w-[52ch] text-[14px] leading-[1.7] text-muted-foreground">
@@ -868,7 +868,7 @@ function Audience() {
                 key={item}
                 className="group grid grid-cols-[1fr_auto] items-center gap-6 border-t border-border/70 py-5 transition-colors hover:bg-muted/40 last:border-b"
               >
-                <span className="font-serif text-[1.5rem] leading-tight tracking-tight sm:text-[1.75rem]">
+                <span className="font-serif text-[1.5rem] leading-snug sm:text-[1.75rem]">
                   {item}
                 </span>
                 <ArrowUpRight
@@ -1003,7 +1003,7 @@ function PricingCard({ plan, featured, permissionName }: PricingCardProps) {
         >
           {plan.code}
         </div>
-        <h3 className="font-serif text-[1.75rem] leading-tight tracking-tight">
+        <h3 className="font-serif text-[1.75rem] leading-snug">
           {plan.name}
         </h3>
         {plan.description && (
@@ -1020,7 +1020,7 @@ function PricingCard({ plan, featured, permissionName }: PricingCardProps) {
 
       <div>
         <div className="flex items-baseline gap-2">
-          <span className="font-serif text-[2.75rem] leading-none tracking-tight">
+          <span className="font-serif text-[2.75rem] leading-none">
             {isFree ? 'R$ 0' : formatCurrencyBRL(plan.price_cents)}
           </span>
           <span
@@ -1179,7 +1179,7 @@ function Testimonial() {
           <span className="block font-serif text-[8rem] leading-none text-foreground/15 sm:text-[10rem]">
             “
           </span>
-          <blockquote className="-mt-10 font-serif text-[clamp(1.75rem,3.5vw,2.75rem)] leading-[1.25] tracking-tight sm:-mt-14">
+          <blockquote className="-mt-10 font-serif text-[clamp(1.75rem,3.5vw,2.75rem)] leading-[1.3] sm:-mt-14">
             Antes eu perdia uma hora por dia confirmando no WhatsApp.
             Coloquei o link no Instagram e os clientes passaram a marcar
             sozinhos.{' '}
@@ -1266,38 +1266,37 @@ function Faq() {
 
 function FaqItem({ q, a }: { q: string; a: string }) {
   const [open, setOpen] = useState(false)
-  const panelRef = useRef<HTMLDivElement | null>(null)
+  const panelId = useId()
   return (
     <div className="border-b border-border/70">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="flex w-full items-start justify-between gap-6 py-6 text-left"
+        aria-controls={panelId}
+        className="flex w-full items-start justify-between gap-6 py-6 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        <span className="font-serif text-[1.25rem] leading-snug tracking-tight sm:text-[1.4rem]">
+        <span className="font-serif text-[1.25rem] leading-snug sm:text-[1.4rem]">
           {q}
         </span>
         <span
           className={cn(
-            'mt-1 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border transition-transform',
+            'mt-1 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border transition-transform motion-reduce:transition-none',
             open && 'rotate-45',
           )}
-          aria-hidden
+          aria-hidden="true"
         >
           <Plus className="h-3.5 w-3.5" strokeWidth={1.8} />
         </span>
       </button>
       <div
-        ref={panelRef}
-        className="grid overflow-hidden transition-[grid-template-rows] duration-300 ease-out"
-        style={{ gridTemplateRows: open ? '1fr' : '0fr' }}
+        id={panelId}
+        hidden={!open}
+        className="pb-6 pr-10"
       >
-        <div className="min-h-0 overflow-hidden">
-          <p className="max-w-[62ch] pb-6 pr-10 text-[14px] leading-[1.75] text-muted-foreground">
-            {a}
-          </p>
-        </div>
+        <p className="max-w-[62ch] text-[14px] leading-[1.75] text-muted-foreground">
+          {a}
+        </p>
       </div>
     </div>
   )
@@ -1326,7 +1325,7 @@ function Finale() {
           <span className="h-px w-6 bg-slate-500" aria-hidden />
         </div>
 
-        <h2 className="mx-auto mt-8 max-w-4xl font-serif text-[clamp(2.5rem,6vw,5rem)] leading-[1.02] tracking-tight">
+        <h2 className="mx-auto mt-8 max-w-4xl font-serif text-[clamp(2.5rem,6vw,5rem)] leading-[1.1] text-balance">
           Comece grátis hoje.{' '}
           <span className="italic text-slate-400">
             Suba de plano quando precisar.
@@ -1364,12 +1363,12 @@ function Finale() {
         <div className="mt-20 grid grid-cols-2 gap-10 border-t border-slate-800 pt-10 text-left sm:grid-cols-4">
           {[
             ['Grátis', 'para começar'],
-            ['∞', 'agendamentos'],
-            ['0', 'cartão de crédito'],
+            ['Ilimitados', 'agendamentos'],
+            ['Zero', 'cartão de crédito'],
             ['2 min', 'de setup'],
           ].map(([v, l]) => (
             <div key={l}>
-              <div className="font-serif text-3xl leading-none tracking-tight">
+              <div className="font-serif text-3xl leading-none">
                 {v}
               </div>
               <div className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-slate-500">
@@ -1437,9 +1436,19 @@ function SiteFooter() {
 
         <div className="sm:col-span-2">
           <FooterTitle>Legal</FooterTitle>
-          <ul className="mt-4 space-y-2.5 text-[13px] text-foreground/80">
-            <li>Termos</li>
-            <li>Privacidade</li>
+          <ul className="mt-4 space-y-2.5 text-[13px] text-muted-foreground">
+            <li>
+              <span className="opacity-60">Termos</span>
+              <span className="ml-1.5 font-mono text-[10px] uppercase tracking-[0.14em]">
+                em breve
+              </span>
+            </li>
+            <li>
+              <span className="opacity-60">Privacidade</span>
+              <span className="ml-1.5 font-mono text-[10px] uppercase tracking-[0.14em]">
+                em breve
+              </span>
+            </li>
           </ul>
         </div>
       </div>
@@ -1504,7 +1513,7 @@ function SectionHead({
           {eyebrow}
         </span>
       </div>
-      <h2 className="mt-6 max-w-3xl font-serif text-[clamp(2.25rem,5vw,4rem)] leading-[1.05] tracking-tight">
+      <h2 className="mt-6 max-w-3xl font-serif text-[clamp(2.25rem,5vw,4rem)] leading-[1.1] text-balance">
         {title}
       </h2>
     </div>

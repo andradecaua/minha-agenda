@@ -118,6 +118,19 @@
     animation: rise 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) both;
   }
 
+  /* Respeita quem não quer animação. Mantém opacity final 1
+     (sem rise, mas sem ficar invisível). */
+  @media (prefers-reduced-motion: reduce) {
+    .rise {
+      animation: none;
+      opacity: 1;
+      transform: none;
+    }
+    .link-underline::after {
+      transition: none;
+    }
+  }
+
   /* Underline estilo editorial com crescimento no hover. */
   .link-underline {
     position: relative;
