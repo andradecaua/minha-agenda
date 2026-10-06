@@ -629,6 +629,82 @@ Se faltar atualização, considere a entrega incompleta.
 
 ## Changelog
 
+- **2026-10-06** — **Webhook do MP: `notification_url` + fallback por
+  duplo-check + lenient em topics acessórios.** Três ajustes no
+  `mercadopago-webhook` depois de debugar o fluxo real:
+
+  1. **`notification_url` na Preference.** `_shared/mercadopago.ts`
+     passou a aceitar e enviar `notification_url` quando `SUPABASE_URL`
+     está disponível, apontando pra própria edge. Sem isso, o MP não
+     disparava o webhook pra pagamentos reais de **test mode** —
+     simulate pelo painel funcionava, mas checkout real sumia.
+
+  2. **`verifyWebhookSignature` tenta múltiplas variantes.**
+     O MP calcula o manifesto HMAC usando `data.id` de forma
+     inconsistente: às vezes vem na query (`?data.id=...`), às vezes
+     no body JSON, às vezes em nenhum. O verifier agora testa 3
+     variantes (`body`, `query`, `empty`) e loga qual bateu quando
+     uma delas valida. Signature inválida só é definitiva se nenhuma
+     bater.
+
+  3. **Fallback por duplo-check (sem flag manual).** Se HMAC falhar
+     num `topic=payment` (acontece em credenciais de teste do MP por
+     bug conhecido com `notification_url` de Preference), o webhook
+     NÃO rejeita direto. Em vez disso:
+     - a. Chama `getPayment(id)` via `MP_ACCESS_TOKEN`. Se o MP
+       devolve o resource, ele existe e pertence à nossa conta
+       (atacante não forja payment real sem o access token).
+     - b. Lê `external_reference` do payment, extrai `user_id`,
+       verifica em `auth.users` via `auth.admin.getUserById`. Se
+       existe, aceita como fallback.
+     - c. Se qualquer um dos dois checks falha → 401 estrito.
+
+     Combinação (a) + (b) protege até em prod: um atacante teria que
+     ter um payment real da **nossa** conta MP **E** o user_id
+     correspondente **E** o payment estaria originalmente associado
+     a uma Preference que a gente mesmo criou. Pior cenário residual
+     (replay de webhook legítimo) é absorvido pela trava de
+     idempotência `payment_events UNIQUE (gateway, gateway_event_id)`.
+
+     **Tentei antes:** gating por `payment.live_mode === true/false`.
+     Fracassou porque credenciais de teste do MP devolvem
+     `live_mode: true` em alguns setups — a heurística rejeitava
+     payments de dev. Desenho atual é independente desse campo.
+
+  4. **Topic auto-detect + topics não-payment silenciosos.** O MP
+     usa nomes diferentes de campo (`type`, `topic`, `action`,
+     query string) dependendo da versão/formato. Agora a edge testa
+     todos. Se mesmo assim o topic vier vazio mas tiver `resourceId`,
+     assume `payment` (único resource que este app cria). Topics
+     não-payment (`merchant_order`, pings, etc.) deixaram de retornar
+     401 — retornam `200 ok` silenciosamente pra evitar o MP
+     reagendar o mesmo evento inútil várias vezes. Se HMAC bate,
+     ainda são auditados em `payment_events`.
+
+  **Também:** `SubscriptionPage` ganhou trava anti-duplicata — se
+  `my_plan.subscription_status === 'active'` e `expires_at > now()`,
+  os botões "Assinar" dos outros planos ficam `disabled` e um
+  aviso em azul anuncia a data de liberação. Evita cobrança
+  duplicada se o usuário clicar sem perceber que já pagou.
+
+  **Arquivos tocados:**
+  - `supabase/functions/_shared/mercadopago.ts` — `notification_url`
+    no `PreferenceInput`, `verifyWebhookSignature` com múltiplas
+    variantes de manifesto, `PaymentResponse.live_mode` adicionado
+    (mantido como info, não como gate).
+  - `supabase/functions/create-subscription/index.ts` — monta
+    `notification_url` a partir de `SUPABASE_URL`.
+  - `supabase/functions/mercadopago-webhook/index.ts` — refatorado:
+    topic auto-detect, caminho crítico só pra `payment`, fallback
+    duplo-check, tratamento silencioso de topics acessórios.
+  - `src/pages/dashboard/settings/SubscriptionPage.tsx` — flag
+    `hasActivePaidSub` + prop `lockedUntilExpire` em `PlanCard`.
+
+  **Dívida assumida:** se um dia a doc do MP esclarecer o formato
+  exato do manifesto HMAC em `notification_url` de Preference, dá
+  pra reduzir a `verifyWebhookSignature` pra uma variante só.
+  Por ora, "tenta todas" é a estratégia mais robusta.
+
 - **2026-10-06** — **Assinatura dentro do app pra conta grátis.**
   Antes só dava pra assinar vindo da landing. Agora o usuário logado no
   plano `free` tem dois caminhos no próprio dashboard:
