@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Check, Loader2, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Check, Loader2, Pencil, Plus, Shield, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -12,6 +12,7 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import { useAdminPlans } from '@/hooks/queries/useAdminPlans'
+import { usePermissionCatalog } from '@/hooks/queries/usePermissionCatalog'
 import {
   createPlan,
   deletePlan,
@@ -19,6 +20,7 @@ import {
   type CreatePlanInput,
 } from '@/services/admin'
 import { formatCurrencyBRL } from '@/lib/utils'
+import type { PermissionCatalogEntry } from '@/lib/permissions'
 import type { BillingInterval, Plan } from '@/types/admin'
 
 export function AdminPlansPage() {
@@ -134,6 +136,24 @@ export function AdminPlansPage() {
                     ))}
                   </ul>
                 )}
+                {p.permissions.length > 0 && (
+                  <div className="space-y-1.5 border-t pt-3">
+                    <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                      <Shield className="h-3 w-3" aria-hidden="true" />
+                      Permissões
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {p.permissions.map((code) => (
+                        <code
+                          key={code}
+                          className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                        >
+                          {code}
+                        </code>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div className="flex flex-wrap gap-2 border-t pt-3 text-xs text-muted-foreground">
                   {p.max_services !== null && <span>Serviços: {p.max_services}</span>}
                   {p.max_appointments_per_month !== null && (
@@ -198,6 +218,7 @@ interface PlanFormDialogProps {
   onSaved: () => void
 }
 function PlanFormDialog({ mode, plan, onClose, onSaved }: PlanFormDialogProps) {
+  const { data: catalog, isLoading: catalogLoading } = usePermissionCatalog()
   const [form, setForm] = useState({
     code: plan?.code ?? '',
     name: plan?.name ?? '',
@@ -209,8 +230,20 @@ function PlanFormDialog({ mode, plan, onClose, onSaved }: PlanFormDialogProps) {
     max_appointments_per_month: plan?.max_appointments_per_month?.toString() ?? '',
     active: plan?.active ?? true,
   })
+  const [permissions, setPermissions] = useState<Set<string>>(
+    () => new Set(plan?.permissions ?? []),
+  )
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+
+  function togglePermission(code: string) {
+    setPermissions((prev) => {
+      const next = new Set(prev)
+      if (next.has(code)) next.delete(code)
+      else next.add(code)
+      return next
+    })
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -228,6 +261,7 @@ function PlanFormDialog({ mode, plan, onClose, onSaved }: PlanFormDialogProps) {
         price_cents: form.price_cents,
         billing_interval: form.billing_interval,
         features,
+        permissions: Array.from(permissions),
         max_services: form.max_services ? Number(form.max_services) : null,
         max_appointments_per_month: form.max_appointments_per_month
           ? Number(form.max_appointments_per_month)
@@ -354,6 +388,12 @@ function PlanFormDialog({ mode, plan, onClose, onSaved }: PlanFormDialogProps) {
             />
           </div>
         </div>
+        <PermissionsPicker
+          catalog={catalog}
+          loading={catalogLoading}
+          selected={permissions}
+          onToggle={togglePermission}
+        />
         <div className="flex items-center justify-between rounded-md border p-3">
           <div>
             <Label htmlFor="plan-active">Plano ativo</Label>
@@ -370,5 +410,89 @@ function PlanFormDialog({ mode, plan, onClose, onSaved }: PlanFormDialogProps) {
         {err && <p className="text-sm text-destructive">{err}</p>}
       </form>
     </Dialog>
+  )
+}
+
+interface PermissionsPickerProps {
+  catalog: PermissionCatalogEntry[] | undefined
+  loading: boolean
+  selected: Set<string>
+  onToggle: (code: string) => void
+}
+
+/**
+ * Checkbox list agrupada por categoria. Fonte: `permission_catalog`
+ * no banco. Códigos novos aparecem aqui automaticamente — não é
+ * preciso tocar neste componente ao adicionar permissão nova.
+ */
+function PermissionsPicker({ catalog, loading, selected, onToggle }: PermissionsPickerProps) {
+  const grouped = useMemo(() => {
+    if (!catalog) return [] as [string, PermissionCatalogEntry[]][]
+    const map = new Map<string, PermissionCatalogEntry[]>()
+    for (const entry of catalog) {
+      const bucket = map.get(entry.category) ?? []
+      bucket.push(entry)
+      map.set(entry.category, bucket)
+    }
+    return Array.from(map.entries())
+  }, [catalog])
+
+  return (
+    <div className="space-y-2 rounded-md border p-3">
+      <div className="flex items-center justify-between">
+        <Label>Permissões liberadas</Label>
+        <span className="text-xs text-muted-foreground">
+          {selected.size} selecionada{selected.size === 1 ? '' : 's'}
+        </span>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Marque os recursos que este plano desbloqueia. O enforcement
+        acontece no banco (RLS) e no frontend (guards de rota).
+      </p>
+      {loading ? (
+        <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Carregando catálogo...
+        </div>
+      ) : grouped.length === 0 ? (
+        <p className="py-3 text-sm text-muted-foreground">
+          Catálogo vazio. Rode a migration 0019.
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {grouped.map(([category, entries]) => (
+            <div key={category}>
+              <div className="mb-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
+                {category}
+              </div>
+              <div className="space-y-1.5">
+                {entries.map((entry) => (
+                  <label
+                    key={entry.code}
+                    className="flex cursor-pointer items-start gap-2 rounded-sm px-1 py-0.5 hover:bg-accent/50"
+                  >
+                    <input
+                      type="checkbox"
+                      className="mt-0.5 h-3.5 w-3.5 cursor-pointer accent-primary"
+                      checked={selected.has(entry.code)}
+                      onChange={() => onToggle(entry.code)}
+                    />
+                    <span className="flex-1 text-xs">
+                      <span className="font-medium">{entry.name}</span>
+                      <code className="ml-2 text-muted-foreground">{entry.code}</code>
+                      {entry.description && (
+                        <span className="block text-[11px] text-muted-foreground">
+                          {entry.description}
+                        </span>
+                      )}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }

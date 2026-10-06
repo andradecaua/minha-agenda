@@ -15,6 +15,8 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { useAdminSession } from '@/hooks/queries/useAdminSession'
+import { usePermissions } from '@/hooks/usePermissions'
+import { PERMISSIONS, type PermissionCode } from '@/lib/permissions'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
@@ -22,6 +24,8 @@ interface NavItem {
   to: string
   label: string
   icon: typeof LayoutDashboard
+  /** Se definido, esconde o item quando o plano não inclui a permissão. */
+  permission?: PermissionCode
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -29,8 +33,18 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/dashboard/agenda', label: 'Agenda', icon: CalendarDays },
   { to: '/dashboard/clientes', label: 'Clientes', icon: Users },
   { to: '/dashboard/servicos', label: 'Serviços', icon: Scissors },
-  { to: '/dashboard/portfolio', label: 'Portfólio', icon: Images },
-  { to: '/dashboard/produtos', label: 'Produtos', icon: Package },
+  {
+    to: '/dashboard/portfolio',
+    label: 'Portfólio',
+    icon: Images,
+    permission: PERMISSIONS.PORTFOLIO_MANAGE,
+  },
+  {
+    to: '/dashboard/produtos',
+    label: 'Produtos',
+    icon: Package,
+    permission: PERMISSIONS.PRODUCTS_MANAGE,
+  },
   { to: '/dashboard/configuracoes', label: 'Configurações', icon: Settings },
 ]
 
@@ -39,7 +53,15 @@ export function DashboardLayout() {
   const navigate = useNavigate()
   const [mobileOpen, setMobileOpen] = useState(false)
   const { data: adminStatus } = useAdminSession()
+  const { can, loading: permsLoading } = usePermissions()
   const isAdminUser = !!adminStatus?.is_admin_user
+
+  // Enquanto o plano não chega, deixa o item visível — melhor que
+  // piscar sumindo e aparecendo. A rota protegida mostra o upgrade
+  // se o usuário realmente não puder acessar.
+  const visibleNavItems = NAV_ITEMS.filter(
+    (item) => !item.permission || permsLoading || can(item.permission),
+  )
 
   async function handleSignOut() {
     await signOut()
@@ -51,6 +73,7 @@ export function DashboardLayout() {
       {/* Sidebar desktop */}
       <aside className="fixed inset-y-0 left-0 hidden w-64 border-r bg-background md:flex md:flex-col">
         <SidebarContent
+          items={visibleNavItems}
           onNavigate={() => undefined}
           onSignOut={handleSignOut}
           email={user?.email ?? null}
@@ -94,6 +117,7 @@ export function DashboardLayout() {
               </button>
             </div>
             <SidebarContent
+              items={visibleNavItems}
               onNavigate={() => setMobileOpen(false)}
               onSignOut={handleSignOut}
               email={user?.email ?? null}
@@ -113,20 +137,21 @@ export function DashboardLayout() {
 }
 
 interface SidebarContentProps {
+  items: NavItem[]
   onNavigate: () => void
   onSignOut: () => void
   email: string | null
   isAdmin: boolean
 }
 
-function SidebarContent({ onNavigate, onSignOut, email, isAdmin }: SidebarContentProps) {
+function SidebarContent({ items, onNavigate, onSignOut, email, isAdmin }: SidebarContentProps) {
   return (
     <>
       <div className="hidden h-14 items-center border-b px-6 font-semibold md:flex">
         Minha Agenda
       </div>
       <nav className="flex-1 space-y-1 p-3">
-        {NAV_ITEMS.map((item) => (
+        {items.map((item) => (
           <NavLink
             key={item.to}
             to={item.to}

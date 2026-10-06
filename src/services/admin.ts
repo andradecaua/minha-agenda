@@ -32,6 +32,7 @@ export const ADMIN_ERROR_LABEL: Record<string, string> = {
   invalid_input: 'Campos obrigatórios ausentes.',
   invalid_price: 'Preço inválido.',
   invalid_status: 'Status inválido.',
+  invalid_permission: 'Permissão desconhecida: confira os códigos no catálogo.',
   cannot_self_demote: 'Você não pode remover a si mesmo do grupo de administradores.',
 }
 
@@ -168,6 +169,8 @@ export interface CreatePlanInput {
   price_cents: number
   billing_interval: BillingInterval
   features?: string[]
+  /** Códigos canônicos do catálogo (ver `src/lib/permissions.ts`). */
+  permissions?: string[]
   max_services?: number | null
   max_appointments_per_month?: number | null
   active?: boolean
@@ -184,6 +187,7 @@ export async function createPlan(input: CreatePlanInput): Promise<string> {
     p_max_services: input.max_services ?? null,
     p_max_appointments_per_month: input.max_appointments_per_month ?? null,
     p_active: input.active ?? true,
+    p_permissions: input.permissions ?? [],
   })
   if (error) throw error
   const result = parseResult<{ plan_id: string }>(data)
@@ -198,6 +202,8 @@ export interface UpdatePlanInput {
   price_cents?: number
   billing_interval?: BillingInterval
   features?: string[]
+  /** `undefined` = não altera. Passe `[]` para esvaziar. */
+  permissions?: string[]
   max_services?: number | null
   max_appointments_per_month?: number | null
   active?: boolean
@@ -214,6 +220,7 @@ export async function updatePlan(input: UpdatePlanInput): Promise<void> {
     p_max_services: input.max_services ?? null,
     p_max_appointments_per_month: input.max_appointments_per_month ?? null,
     p_active: input.active ?? null,
+    p_permissions: input.permissions ?? null,
   })
   if (error) throw error
   const result = parseResult<unknown>(data)

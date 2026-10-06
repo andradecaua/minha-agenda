@@ -13,6 +13,15 @@ export interface SignUpResult {
 
 export type Aal = 'aal1' | 'aal2'
 
+export interface SignUpOptions {
+  /**
+   * URL absoluta pra onde o link do email de confirmação deve
+   * redirecionar o usuário. Em geral `${origin}/checkout/<planCode>`
+   * quando o cadastro veio da seção de planos. Default: `${origin}`.
+   */
+  emailRedirectTo?: string
+}
+
 export interface AuthContextValue {
   session: Session | null
   user: User | null
@@ -25,7 +34,12 @@ export interface AuthContextValue {
    */
   aal: Aal
   signIn: (email: string, password: string) => Promise<void>
-  signUp: (email: string, password: string, name: string) => Promise<SignUpResult>
+  signUp: (
+    email: string,
+    password: string,
+    name: string,
+    options?: SignUpOptions,
+  ) => Promise<SignUpResult>
   signOut: () => Promise<void>
   sendPasswordReset: (email: string) => Promise<void>
   resendSignupEmail: (email: string) => Promise<void>
@@ -93,12 +107,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
         const { error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) throw error
       },
-      async signUp(email, password, name) {
+      async signUp(email, password, name, options) {
         const { data, error } = await supabase.auth.signUp({
           email,
           password,
           options: {
             data: { name },
+            emailRedirectTo: options?.emailRedirectTo,
           },
         })
         if (error) {

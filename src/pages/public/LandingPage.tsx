@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ArrowRight,
@@ -6,12 +6,17 @@ import {
   Calendar,
   Check,
   Clock,
+  Loader2,
   Minus,
   Plus,
 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
-import { cn } from '@/lib/utils'
+import { cn, formatCurrencyBRL } from '@/lib/utils'
+import { usePublicPlans } from '@/hooks/queries/usePublicPlans'
+import { usePermissionCatalog } from '@/hooks/queries/usePermissionCatalog'
+import { useAuth } from '@/hooks/useAuth'
+import type { Plan } from '@/types/admin'
 
 /**
  * Landing pública (/) para visitantes não autenticados.
@@ -31,6 +36,7 @@ export function LandingPage() {
         <Showcase />
         <Process />
         <Audience />
+        <Pricing />
         <Testimonial />
         <Faq />
         <Finale />
@@ -880,6 +886,288 @@ function Audience() {
 }
 
 /* ──────────────────────────────────────────────────────────────── */
+/* Pricing — planos lidos do banco                                   */
+/* ──────────────────────────────────────────────────────────────── */
+
+function Pricing() {
+  const { data: plans, isLoading } = usePublicPlans()
+  const { data: catalog } = usePermissionCatalog()
+
+  // Nome amigável de cada permissão. Fallback: o próprio código.
+  const permissionNameByCode = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const entry of catalog ?? []) map.set(entry.code, entry.name)
+    return map
+  }, [catalog])
+
+  return (
+    <section id="planos" className="border-b border-border/70">
+      <div className="mx-auto max-w-[1200px] px-6 py-24 sm:py-28">
+        <SectionHead
+          eyebrow="Planos"
+          align="center"
+          title={
+            <>
+              Comece de graça.{' '}
+              <span className="italic text-muted-foreground">
+                Suba de plano quando crescer.
+              </span>
+            </>
+          }
+        />
+
+        <div className="mt-14">
+          {isLoading ? (
+            <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              Carregando planos...
+            </div>
+          ) : !plans || plans.length === 0 ? (
+            <p className="py-10 text-center text-sm text-muted-foreground">
+              Nenhum plano disponível no momento.
+            </p>
+          ) : (
+            <div
+              className={cn(
+                'mx-auto grid gap-6',
+                plans.length === 1 && 'max-w-md',
+                plans.length === 2 && 'max-w-3xl md:grid-cols-2',
+                plans.length >= 3 && 'max-w-5xl md:grid-cols-3',
+              )}
+            >
+              {plans.map((plan, i) => (
+                <PricingCard
+                  key={plan.id}
+                  plan={plan}
+                  featured={plans.length > 1 && i === plans.length - 1}
+                  permissionName={(code) =>
+                    permissionNameByCode.get(code) ?? code
+                  }
+                />
+              ))}
+            </div>
+          )}
+        </div>
+
+        <p className="mx-auto mt-10 max-w-md text-center text-[12px] text-muted-foreground">
+          Pague com Pix, cartão ou boleto. Renova mensalmente — você paga de novo quando o período acabar.
+        </p>
+      </div>
+    </section>
+  )
+}
+
+interface PricingCardProps {
+  plan: Plan
+  featured: boolean
+  permissionName: (code: string) => string
+}
+
+function PricingCard({ plan, featured, permissionName }: PricingCardProps) {
+  const { session } = useAuth()
+  const isFree = plan.price_cents === 0
+  const benefits = Array.isArray(plan.features) ? (plan.features as string[]) : []
+  const permissions = plan.permissions ?? []
+  const isLoggedIn = !!session
+
+  // Para o plano grátis: logado → dashboard; visitante → signup
+  // simples (sem query param, cai direto no plano free via trigger).
+  const signupHref = '/signup'
+
+  return (
+    <article
+      className={cn(
+        'relative flex h-full flex-col gap-6 rounded-[14px] border p-7 transition-colors',
+        featured
+          ? 'border-foreground bg-foreground text-background'
+          : 'border-border bg-background hover:bg-muted/40',
+      )}
+    >
+      {featured && (
+        <span
+          className={cn(
+            'absolute -top-2.5 left-7 rounded-full px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em]',
+            'bg-background text-foreground',
+          )}
+        >
+          Recomendado
+        </span>
+      )}
+
+      <header className="space-y-1">
+        <div
+          className={cn(
+            'font-mono text-[11px] uppercase tracking-[0.18em]',
+            featured ? 'text-background/60' : 'text-muted-foreground',
+          )}
+        >
+          {plan.code}
+        </div>
+        <h3 className="font-serif text-[1.75rem] leading-tight tracking-tight">
+          {plan.name}
+        </h3>
+        {plan.description && (
+          <p
+            className={cn(
+              'text-[13px] leading-relaxed',
+              featured ? 'text-background/70' : 'text-muted-foreground',
+            )}
+          >
+            {plan.description}
+          </p>
+        )}
+      </header>
+
+      <div>
+        <div className="flex items-baseline gap-2">
+          <span className="font-serif text-[2.75rem] leading-none tracking-tight">
+            {isFree ? 'R$ 0' : formatCurrencyBRL(plan.price_cents)}
+          </span>
+          <span
+            className={cn(
+              'font-mono text-[11px] uppercase tracking-[0.14em]',
+              featured ? 'text-background/60' : 'text-muted-foreground',
+            )}
+          >
+            /{translateInterval(plan.billing_interval)}
+          </span>
+        </div>
+      </div>
+
+      {benefits.length > 0 && (
+        <ul className="space-y-2 text-[13px]">
+          {benefits.map((b, i) => (
+            <li key={i} className="flex items-start gap-2">
+              <Check
+                className={cn(
+                  'mt-0.5 h-3.5 w-3.5 flex-shrink-0',
+                  featured ? 'text-background' : 'text-foreground',
+                )}
+                aria-hidden="true"
+              />
+              <span>{b}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {permissions.length > 0 && (
+        <div
+          className={cn(
+            'space-y-2 border-t pt-4',
+            featured ? 'border-background/20' : 'border-border/70',
+          )}
+        >
+          <div
+            className={cn(
+              'font-mono text-[10px] uppercase tracking-[0.14em]',
+              featured ? 'text-background/60' : 'text-muted-foreground',
+            )}
+          >
+            Inclui
+          </div>
+          <ul className="space-y-1 text-[12px]">
+            {permissions.map((code) => (
+              <li key={code} className="flex items-start gap-2">
+                <span
+                  className={cn(
+                    'mt-1 h-1 w-1 flex-shrink-0 rounded-full',
+                    featured ? 'bg-background/60' : 'bg-foreground/40',
+                  )}
+                  aria-hidden="true"
+                />
+                <span>{permissionName(code)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {(plan.max_services !== null ||
+        plan.max_appointments_per_month !== null) && (
+        <div
+          className={cn(
+            'flex flex-wrap gap-x-4 gap-y-1 border-t pt-4 font-mono text-[10.5px] uppercase tracking-[0.14em]',
+            featured
+              ? 'border-background/20 text-background/60'
+              : 'border-border/70 text-muted-foreground',
+          )}
+        >
+          <span>
+            {plan.max_services !== null
+              ? `${plan.max_services} serviços`
+              : 'serviços ilimitados'}
+          </span>
+          <span>
+            {plan.max_appointments_per_month !== null
+              ? `${plan.max_appointments_per_month} agendamentos/mês`
+              : 'agendamentos ilimitados'}
+          </span>
+        </div>
+      )}
+
+      <div className="mt-auto space-y-2 pt-2">
+        {isFree ? (
+          <Button
+            asChild
+            className={cn(
+              'h-11 w-full rounded-full',
+              featured && 'bg-background text-foreground hover:bg-background/90',
+            )}
+          >
+            <Link to={isLoggedIn ? '/dashboard' : signupHref}>
+              {isLoggedIn ? 'Ir para o dashboard' : 'Começar grátis'}
+              <ArrowRight className="h-4 w-4" aria-hidden="true" />
+            </Link>
+          </Button>
+        ) : (
+          <>
+            {/* Pago:
+                - logado   → `/checkout/:code` dispara direto.
+                - visitante → `/signup?plan=:code` (signup PRIMEIRO,
+                  faz mais sentido que forçar login). Quem já tem
+                  conta usa o link "Já tem conta? Entrar" dentro do
+                  signup, que preserva o redirectTo. */}
+            <Button
+              asChild
+              className={cn(
+                'h-11 w-full rounded-full',
+                featured && 'bg-background text-foreground hover:bg-background/90',
+              )}
+            >
+              <Link
+                to={
+                  isLoggedIn
+                    ? `/checkout/${plan.code}`
+                    : `/signup?plan=${plan.code}`
+                }
+              >
+                {isLoggedIn ? 'Assinar' : 'Criar conta e assinar'}
+                <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </Link>
+            </Button>
+            <p
+              className={cn(
+                'text-center text-[10.5px] font-mono uppercase tracking-[0.14em]',
+                featured ? 'text-background/50' : 'text-muted-foreground',
+              )}
+            >
+              Pix · cartão · boleto
+            </p>
+          </>
+        )}
+      </div>
+    </article>
+  )
+}
+
+function translateInterval(i: string): string {
+  if (i === 'monthly') return 'mês'
+  if (i === 'yearly') return 'ano'
+  return 'vitalício'
+}
+
+/* ──────────────────────────────────────────────────────────────── */
 /* Testimonial — pull-quote editorial                                */
 /* ──────────────────────────────────────────────────────────────── */
 
@@ -1022,7 +1310,7 @@ function FaqItem({ q, a }: { q: string; a: string }) {
 function Finale() {
   return (
     <section
-      id="planos"
+      id="comecar"
       className="grain grain-dark relative overflow-hidden bg-slate-950 text-slate-100"
     >
       <div

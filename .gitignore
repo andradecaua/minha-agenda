@@ -25,3 +25,5 @@ pnpm-debug.log*
 
 supabase/.branches
 supabase/.temp
+
+.firebase/

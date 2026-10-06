@@ -6,8 +6,9 @@ import { PublicLayout } from '@/layouts/PublicLayout'
 import { DashboardLayout } from '@/layouts/DashboardLayout'
 import { ProtectedRoute } from '@/routes/ProtectedRoute'
 import { GuestOnlyRoute } from '@/routes/GuestOnlyRoute'
-import { RootRedirect } from '@/routes/RootRedirect'
 import { AdminRoute } from '@/routes/AdminRoute'
+import { RequirePermission } from '@/routes/RequirePermission'
+import { PERMISSIONS } from '@/lib/permissions'
 
 // Páginas de auth — pequenas, mantidas estáticas para não piscar no
 // primeiro carregamento (que geralmente cai em /login).
@@ -84,6 +85,11 @@ const BookingSettingsPage = lazy(() =>
     default: m.BookingSettingsPage,
   })),
 )
+const SubscriptionPage = lazy(() =>
+  import('@/pages/dashboard/settings/SubscriptionPage').then((m) => ({
+    default: m.SubscriptionPage,
+  })),
+)
 const ProfessionalPage = lazy(() =>
   import('@/pages/public/ProfessionalPage').then((m) => ({
     default: m.ProfessionalPage,
@@ -92,6 +98,18 @@ const ProfessionalPage = lazy(() =>
 const AppointmentDetailPublicPage = lazy(() =>
   import('@/pages/public/AppointmentDetailPublicPage').then((m) => ({
     default: m.AppointmentDetailPublicPage,
+  })),
+)
+// Landing é lazy — visitante que entra direto em outra rota não baixa.
+// Renderizada em `/` sempre, inclusive para usuários autenticados: o
+// "entrar automático" acontece quando clicam no botão Entrar, não ao
+// abrir a home.
+const LandingPage = lazy(() =>
+  import('@/pages/public/LandingPage').then((m) => ({ default: m.LandingPage })),
+)
+const CheckoutRedirectPage = lazy(() =>
+  import('@/pages/CheckoutRedirectPage').then((m) => ({
+    default: m.CheckoutRedirectPage,
   })),
 )
 
@@ -134,7 +152,7 @@ export function AppRoutes() {
   return (
     <Suspense fallback={<RouteFallback />}>
       <Routes>
-        <Route path="/" element={<RootRedirect />} />
+        <Route path="/" element={<LandingPage />} />
 
         <Route element={<GuestOnlyRoute />}>
           <Route element={<PublicLayout />}>
@@ -150,6 +168,11 @@ export function AppRoutes() {
         </Route>
 
         <Route element={<ProtectedRoute />}>
+          {/* Checkout de assinatura — tela de "loading" full-screen que
+              dispara a edge e redireciona pro MP. Fica FORA do
+              DashboardLayout pra não mostrar sidebar em telas de passagem. */}
+          <Route path="/checkout/:planCode" element={<CheckoutRedirectPage />} />
+
           {/* /admin/* exige admin + MFA (AAL2). Páginas MFA ficam dentro
               do AdminRoute mas FORA do AdminLayout (telas focadas, full-screen). */}
           <Route element={<AdminRoute />}>
@@ -171,13 +194,18 @@ export function AppRoutes() {
             <Route path="/dashboard/clientes" element={<ClientsPage />} />
             <Route path="/dashboard/clientes/:id" element={<ClientDetailPage />} />
             <Route path="/dashboard/servicos" element={<ServicesPage />} />
-            <Route path="/dashboard/produtos" element={<ProductsPage />} />
-            <Route path="/dashboard/portfolio" element={<PortfolioPage />} />
+            <Route element={<RequirePermission code={PERMISSIONS.PRODUCTS_MANAGE} />}>
+              <Route path="/dashboard/produtos" element={<ProductsPage />} />
+            </Route>
+            <Route element={<RequirePermission code={PERMISSIONS.PORTFOLIO_MANAGE} />}>
+              <Route path="/dashboard/portfolio" element={<PortfolioPage />} />
+            </Route>
             <Route path="/dashboard/configuracoes" element={<SettingsLayout />}>
               <Route index element={<SettingsIndexPage />} />
               <Route path="perfil" element={<ProfilePage />} />
               <Route path="horarios" element={<BusinessHoursPage />} />
               <Route path="agendamento" element={<BookingSettingsPage />} />
+              <Route path="assinatura" element={<SubscriptionPage />} />
             </Route>
           </Route>
         </Route>

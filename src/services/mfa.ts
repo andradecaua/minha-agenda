@@ -81,20 +81,42 @@ export async function verifyTotp(factorId: string, code: string): Promise<void> 
 
 export async function unenroll(factorId: string): Promise<void> {
   const { error } = await supabase.auth.mfa.unenroll({ factorId })
-  if (error) throw error
+  if (!error) return
+  // DELETE é idempotente: se o fator já não existe no servidor (404),
+  // o estado desejado — ausência — já está satisfeito. Acontece quando
+  // listFactors devolve um fator stale que foi removido fora da UI.
+  const status = (error as { status?: number }).status
+  if (status === 404) return
+  throw error
 }
 
 /**
  * Traduz códigos de erro do Supabase MFA em mensagens em pt-BR.
  * Nunca exibir mensagem crua do servidor ao usuário final.
+ *
+ * `context` diferencia erros do enroll (gerar QR) dos erros de verify
+ * (checar código) — o fallback muda, porque "código inválido" não faz
+ * sentido quando ainda nem geramos o QR.
  */
-export function translateMfaError(err: unknown): string {
+export function translateMfaError(err: unknown, context: 'enroll' | 'verify' = 'verify'): string {
+  // Log cru pra diagnóstico — nunca mostrado ao usuário.
+  // eslint-disable-next-line no-console
+  console.error('[mfa]', context, err)
   const msg = (err instanceof Error ? err.message : String(err)).toLowerCase()
+  if (msg.includes('rate')) return 'Muitas tentativas. Aguarde um momento.'
+  if (msg.includes('not enabled') || msg.includes('disabled') || msg.includes('mfa_disabled')) {
+    return 'MFA/TOTP não está habilitado no projeto Supabase. Habilite em Auth → Providers → TOTP.'
+  }
+  if (msg.includes('session') || msg.includes('jwt') || msg.includes('authenticated')) {
+    return 'Sessão expirada. Faça login de novo.'
+  }
+  if (context === 'enroll') {
+    if (msg.includes('already') && msg.includes('exist')) {
+      return 'Já existe um fator MFA. Recarregue a página para começar de novo.'
+    }
+    return 'Não foi possível gerar o QR code. Verifique se TOTP está habilitado no Supabase e tente de novo.'
+  }
   if (msg.includes('invalid') && msg.includes('code')) return 'Código inválido. Tente novamente.'
   if (msg.includes('expired')) return 'Código expirado. Gere um novo no app autenticador.'
-  if (msg.includes('rate')) return 'Muitas tentativas. Aguarde um momento.'
-  if (msg.includes('not enabled') || msg.includes('disabled')) {
-    return 'MFA não está habilitado no projeto Supabase. Habilite em Auth → MFA.'
-  }
   return 'Não foi possível validar o código. Tente novamente.'
 }

@@ -87,7 +87,11 @@ export function LoginPage() {
 
             <p className="text-center text-sm text-muted-foreground">
               Não tem conta?{' '}
-              <Link to="/signup" className="font-medium text-foreground hover:underline">
+              <Link
+                to="/signup"
+                state={locationState?.redirectTo ? { redirectTo: locationState.redirectTo } : undefined}
+                className="font-medium text-foreground hover:underline"
+              >
                 Criar conta
               </Link>
             </p>

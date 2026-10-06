@@ -11,7 +11,13 @@ export interface Plan {
   description: string | null
   price_cents: number
   billing_interval: BillingInterval
+  /**
+   * Mantido por compat com RPCs antigas (0018). O campo canônico de
+   * permissões agora é `permissions` (ver 0019).
+   */
   features: string[] | Record<string, unknown>
+  /** Permissões ativas no plano. Vazio = plano sem feature extra. */
+  permissions: string[]
   max_services: number | null
   max_appointments_per_month: number | null
   active: boolean

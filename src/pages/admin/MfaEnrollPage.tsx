@@ -33,11 +33,20 @@ export function MfaEnrollPage() {
     let active = true
     ;(async () => {
       try {
-        // Limpa qualquer fator anterior ainda não verificado.
         const existing = await listFactors()
+        // Se já tem fator verificado, não é caso de enroll — manda pro challenge.
+        const verified = existing.find((f) => f.status === 'verified')
+        if (verified) {
+          if (!active) return
+          navigate('/admin/mfa/challenge', { replace: true })
+          return
+        }
+        // Remove fatores unverified (enroll anterior incompleto). Se o unenroll
+        // falhar, propaga — do contrário o próximo enroll quebra com
+        // factor_already_exists e o usuário fica sem saber o motivo real.
         for (const f of existing) {
           if (f.status === 'unverified') {
-            await unenroll(f.id).catch(() => undefined)
+            await unenroll(f.id)
           }
         }
         const enrolled = await enrollTotp('Admin TOTP')
@@ -50,13 +59,13 @@ export function MfaEnrollPage() {
         })
       } catch (err) {
         if (!active) return
-        setState({ stage: 'error', message: translateMfaError(err) })
+        setState({ stage: 'error', message: translateMfaError(err, 'enroll') })
       }
     })()
     return () => {
       active = false
     }
-  }, [])
+  }, [navigate])
 
   async function handleVerify(event: React.FormEvent) {
     event.preventDefault()
@@ -68,7 +77,7 @@ export function MfaEnrollPage() {
       await refreshAal()
       navigate('/admin', { replace: true })
     } catch (err) {
-      setVerifyError(translateMfaError(err))
+      setVerifyError(translateMfaError(err, 'verify'))
     } finally {
       setVerifying(false)
     }

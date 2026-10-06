@@ -1,0 +1,22 @@
+# Config das edge functions.
+#
+# `verify_jwt = false` desabilita a validação de JWT feita pelo gateway
+# do Supabase (que roda ANTES do nosso código). Precisamos disso em
+# ambas as functions:
+#
+#   - create-subscription: a validação do caller é feita DENTRO da
+#     função (via auth.getUser). Sem a flag, o preflight OPTIONS do
+#     browser é rejeitado com 401 antes mesmo de os CORS headers
+#     serem enviados.
+#
+#   - mercadopago-webhook: endpoint público. Segurança via assinatura
+#     HMAC x-signature (ver _shared/mercadopago.ts).
+#
+# A autenticação continua forte: o service_role só é usado dentro das
+# functions, nunca exposto ao caller.
+
+[functions.create-subscription]
+verify_jwt = false
+
+[functions.mercadopago-webhook]
+verify_jwt = false

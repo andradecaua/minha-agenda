@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import {
+  ArrowRight,
   CalendarCheck,
   CalendarDays,
   CalendarPlus,
@@ -7,6 +8,7 @@ import {
   Loader2,
   Package,
   Scissors,
+  Sparkles,
   TrendingUp,
   Users,
 } from 'lucide-react'
@@ -15,14 +17,21 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useMyProfile } from '@/hooks/queries/useMyProfile'
 import { useDashboardStats } from '@/hooks/queries/useDashboardStats'
+import { useMyPlan } from '@/hooks/queries/useMyPermissions'
 import { formatCurrencyBRL } from '@/lib/utils'
 
 export function DashboardHomePage() {
   const { data: profile } = useMyProfile()
   const { data: stats, isLoading } = useDashboardStats(profile?.id)
+  const { data: myPlan } = useMyPlan()
 
   const greeting = useGreeting()
   const firstName = profile?.name.split(/\s+/)[0] ?? ''
+
+  // Mostra o convite de upgrade apenas pra quem está no `free`. Qualquer
+  // plano pago (mesmo expirado) oculta — a página de assinatura trata
+  // "renovar" caso o status não seja `active`.
+  const showUpgradeBanner = myPlan?.plan_code === 'free'
 
   return (
     <div className="space-y-6">
@@ -83,6 +92,8 @@ export function DashboardHomePage() {
           />
         </div>
       )}
+
+      {showUpgradeBanner && <UpgradeBanner />}
 
       <section>
         <h2 className="mb-3 text-sm font-medium text-muted-foreground">
@@ -176,6 +187,32 @@ function ShortcutCard({ to, icon: Icon, title, description }: ShortcutCardProps)
       </div>
       <p className="mt-3 font-medium">{title}</p>
       <p className="text-xs text-muted-foreground">{description}</p>
+    </Link>
+  )
+}
+
+function UpgradeBanner() {
+  return (
+    <Link
+      to="/dashboard/configuracoes/assinatura"
+      className="group flex flex-col items-start justify-between gap-4 rounded-xl border border-primary/30 bg-primary/5 p-5 transition-colors hover:border-primary/50 hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex-row sm:items-center"
+    >
+      <div className="flex items-start gap-3">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary">
+          <Sparkles className="h-4 w-4" aria-hidden="true" />
+        </div>
+        <div>
+          <p className="font-medium">Desbloqueie mais recursos</p>
+          <p className="text-sm text-muted-foreground">
+            Você está no plano gratuito. Veja os planos pagos e assine com Pix,
+            cartão ou boleto.
+          </p>
+        </div>
+      </div>
+      <span className="inline-flex items-center gap-1.5 self-end rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-transform group-hover:translate-x-0.5 sm:self-auto">
+        Ver planos
+        <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+      </span>
     </Link>
   )
 }

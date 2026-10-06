@@ -32,6 +32,8 @@ export const BOOKING_ERROR_LABEL: Record<string, string> = {
   too_far: 'Não é possível agendar tão longe no futuro.',
   outside_hours: 'Horário fora do expediente.',
   conflict: 'Esse horário já está ocupado. Escolha outro.',
+  quota_exceeded:
+    'Este profissional atingiu o limite de agendamentos deste mês. Tente de novo mais tarde.',
   // Erros específicos do admin_create_appointment
   unauthorized: 'Sessão expirada. Faça login novamente.',
   client_not_found: 'Cliente não encontrado.',

@@ -9,6 +9,7 @@ import { Dialog } from '@/components/ui/dialog'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useMyProfile } from '@/hooks/queries/useMyProfile'
 import { servicesQueryKey, useServices } from '@/hooks/queries/useServices'
+import { myUsageQueryKey, useMyUsage } from '@/hooks/queries/useMyUsage'
 import {
   createService,
   deleteService,
@@ -16,6 +17,7 @@ import {
   updateService,
   type ServiceInput,
 } from '@/services/services'
+import { isQuotaError } from '@/services/permissions'
 import type { Service } from '@/types/database'
 import { formatCurrencyBRL, formatMinutesDuration } from '@/lib/utils'
 import { ServiceForm } from './ServiceForm'
@@ -24,6 +26,7 @@ export function ServicesPage() {
   const queryClient = useQueryClient()
   const { data: profile } = useMyProfile()
   const { data: services, isLoading } = useServices(profile?.id)
+  const { data: usage } = useMyUsage()
 
   const [editing, setEditing] = useState<Service | null>(null)
   const [creating, setCreating] = useState(false)
@@ -31,10 +34,16 @@ export function ServicesPage() {
   const [formError, setFormError] = useState<string | null>(null)
   const [listError, setListError] = useState<string | null>(null)
 
+  const maxServices = usage?.max_services ?? null
+  const servicesCount = usage?.services_count ?? services?.length ?? 0
+  const atQuota = maxServices !== null && servicesCount >= maxServices
+
   function invalidate() {
     if (profile) {
       queryClient.invalidateQueries({ queryKey: servicesQueryKey(profile.id) })
     }
+    // Refresca o contador — o novo serviço mudou `services_count`.
+    queryClient.invalidateQueries({ queryKey: myUsageQueryKey() })
   }
 
   const createMutation = useMutation({
@@ -97,8 +106,18 @@ export function ServicesPage() {
       } else {
         await createMutation.mutateAsync(input)
       }
-    } catch {
-      setFormError('Não foi possível salvar. Tente novamente.')
+    } catch (err) {
+      // Trigger de quota (0020) emite SQLSTATE P0100.
+      if (isQuotaError(err)) {
+        setFormError(
+          maxServices
+            ? `Você atingiu o limite do seu plano (${maxServices} serviços). Exclua um existente ou faça upgrade.`
+            : 'Limite de serviços do plano atingido.',
+        )
+        queryClient.invalidateQueries({ queryKey: myUsageQueryKey() })
+      } else {
+        setFormError('Não foi possível salvar. Tente novamente.')
+      }
     }
   }
 
@@ -125,12 +144,22 @@ export function ServicesPage() {
           <p className="text-sm text-muted-foreground">
             O que você oferece. Serviços inativos não aparecem na sua página pública.
           </p>
+          {maxServices !== null && (
+            <p
+              className={`mt-1 text-xs ${atQuota ? 'text-destructive' : 'text-muted-foreground'}`}
+            >
+              {servicesCount} de {maxServices} serviços utilizados
+              {atQuota && ' — limite atingido'}
+            </p>
+          )}
         </div>
         <Button
           onClick={() => {
             setFormError(null)
             setCreating(true)
           }}
+          disabled={atQuota}
+          title={atQuota ? 'Limite do plano atingido' : undefined}
         >
           <Plus className="h-4 w-4" />
           Novo serviço

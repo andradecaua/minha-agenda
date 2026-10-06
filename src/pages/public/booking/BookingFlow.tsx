@@ -173,7 +173,7 @@ export function BookingFlow({
       description={description}
       size="lg"
     >
-      {step !== 'success' && step !== 'services' && (
+      {step !== 'services' && (
         <button
           type="button"
           onClick={back}

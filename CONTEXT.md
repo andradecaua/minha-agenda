@@ -525,7 +525,7 @@ minha-agenda/
 
 ```
 PÚBLICO
-  /                       → landing pública (visitante) / /dashboard (logado)
+  /                       → landing pública (sempre; sem redirect automático)
   /login
   /signup
   /forgot-password
@@ -541,6 +541,7 @@ PROTEGIDO (requer sessão)
     /horarios             → business_hours
     /agendamento          → booking_settings
     /perfil               → profile
+    /assinatura           → planos + checkout do próprio usuário
 
 ADMIN (requer admin_users + MFA / AAL2 — ver §4.5)
   /admin                  → métricas da plataforma
@@ -628,6 +629,323 @@ Se faltar atualização, considere a entrega incompleta.
 
 ## Changelog
 
+- **2026-10-06** — **Assinatura dentro do app pra conta grátis.**
+  Antes só dava pra assinar vindo da landing. Agora o usuário logado no
+  plano `free` tem dois caminhos no próprio dashboard:
+  1. Banner "Desbloqueie mais recursos" na `DashboardHomePage` (aparece
+     só quando `my_plan.plan_code === 'free'`) → leva pra assinatura.
+  2. Nova aba **Assinatura** em `/dashboard/configuracoes/assinatura`
+     (`SubscriptionPage.tsx`) — lista plano atual + todos os planos
+     ativos. Cards com permissões, quotas e benefícios no mesmo
+     vocabulário dos cards da landing. Botão "Assinar <Plano>" chama
+     `createCheckoutForPlan` e redireciona pro Mercado Pago (mesmo
+     `init_point` já usado em `CheckoutRedirectPage`). Plano atual
+     vira "Você está neste plano" (disabled). Plano grátis sempre
+     "Plano padrão" (não dá pra "comprar" grátis — a trigger já assina
+     por default).
+  **Arquivos:**
+  - Novo `src/pages/dashboard/settings/SubscriptionPage.tsx`.
+  - `AppRoutes.tsx`: rota lazy `/dashboard/configuracoes/assinatura`.
+  - `SettingsLayout.tsx`: aba "Assinatura" com ícone `CreditCard`.
+  - `DashboardHomePage.tsx`: `UpgradeBanner` renderizado só pra
+    `plan_code === 'free'`.
+- **2026-10-06** — **Fluxo "intenção primeiro, auth no caminho" pro checkout.**
+  Antes, visitante tinha que: landing → signup → confirmar email →
+  voltar manualmente pra landing → clicar "Assinar". UX ruim.
+
+  Agora o fluxo é:
+  1. Visitante na landing clica "Criar conta e assinar" num plano
+     pago → `<Link to="/signup?plan=pro">` (vai DIRETO pro signup —
+     label e destino batem). Logado clica "Assinar" → vai direto
+     pra `/checkout/:code`.
+  2. SignupPage lê `?plan=` → reconstrói `redirectTo = /checkout/pro`
+     e passa como `emailRedirectTo` absoluto no `signUp`.
+  3. Email de confirmação do Supabase redireciona pra
+     `/checkout/pro` — não pra `/` como padrão.
+  4. `CheckoutRedirectPage` monta, chama a edge `create-subscription`
+     e `window.location = init_point` → Mercado Pago.
+  5. Pagou → `back_urls.success` traz de volta pro `/dashboard`.
+  6. Quem já tem conta: clica em "Já tem conta? Entrar" dentro do
+     signup → LoginPage recebe `redirectTo` via state → login →
+     redirecionado pro `/checkout/pro`.
+
+  **Arquivos:**
+  - Novo `src/pages/CheckoutRedirectPage.tsx` — rota de passagem com
+    `Loader2`, chama `createCheckoutForPlan(plan.id)` uma única vez
+    (guard via `useRef` pra evitar double-fire do StrictMode). Erro
+    mostra "Checkout indisponível" com link pra `/#planos`.
+  - `AppRoutes.tsx`: rota `/checkout/:planCode` dentro de
+    `ProtectedRoute`, FORA de `DashboardLayout` (full-screen).
+  - `LandingPage.PricingCard`: CTAs pagas sempre linkam pra
+    `/checkout/${plan.code}` (removeu `useStartCheckout` daqui).
+    Label: "Assinar" (logado) ou "Criar conta e assinar" (visitante).
+  - `AuthContext.signUp`: assinatura ganhou 4º parâmetro opcional
+    `{ emailRedirectTo?: string }`, repassado pro Supabase.
+  - `SignupPage`:
+    - lê `redirectTo` de `location.state` (vindo do ProtectedRoute);
+      fallback pra `?plan=<code>` → reconstrói `/checkout/<code>`;
+    - passa `emailRedirectTo` absoluto ao `signUp`;
+    - se o Supabase não exigir confirmação de email (session fica
+      ativa no `signUp`), `useEffect` navega pro `redirectTo` direto;
+    - link "Entrar" propaga `redirectTo` via state;
+    - "Entrar nessa conta" (ramo already_registered) também propaga.
+  - `LoginPage`: link "Criar conta" propaga `redirectTo` via state.
+
+  **Trade-off aceito:** o fluxo depende do `emailRedirectTo` do
+  Supabase funcionar — precisa que o domínio esteja whitelistado em
+  **Supabase → Auth → URL Configuration → Redirect URLs**. Já é o
+  caso (`https://seu-dominio.web.app/**`).
+- **2026-10-06** — **Troca Preapproval → Checkout Preference (0023).**
+  Motivação: **Preapproval do MP só aceita cartão de crédito**. Pra
+  oferecer Pix (prioridade BR), migrado pro modelo Checkout Preference
+  ("pagamento por período"): user paga 1 mês → webhook aprova →
+  `current_period_end` estende em 1 mês → quando vence,
+  `has_feature()` filtra via `expires_at > now()` (0019). Sem
+  cobrança recorrente automática; renovação é manual (user paga de
+  novo). Aceita **Pix + cartão + boleto** nativamente via
+  `/checkout/preferences`.
+
+  **Schema (0023_switch_to_preference.sql):**
+  - DROP `plans.gateway_plan_id` + índice. Preference é criado
+    on-the-fly a cada compra, sem template no MP.
+  - `admin_update_plan` reescrito sem `p_gateway_plan_id`.
+  - Resto do schema de pagamento (0021) **permanece**: tabela
+    `payment_events`, campos `gateway_subscription_id` /
+    `current_period_end` em subscriptions, RPCs
+    `activate_subscription_from_webhook`, `mark_subscription_cancelled`,
+    `my_subscription_detail`, `record_payment_event`.
+  - `subscriptions.gateway_subscription_id` passa a guardar o
+    `payment_id` da compra mais recente (não é mais preapproval_id).
+
+  **Edge Functions:**
+  - DELETADA `sync-plan-to-mp` — Preference dispensa pré-sincronização.
+  - `_shared/mercadopago.ts` reescrito: só `createPreference`,
+    `getPayment`, `verifyWebhookSignature`. Preference inclui
+    `back_urls`, `auto_return: 'approved'`, `binary_mode: true`
+    (sem estado "pending" ambíguo), `statement_descriptor: MINHA AGENDA`.
+  - `create-subscription` cria Preference em vez de Preapproval.
+    External reference segue `user_id:plan_id`.
+  - `mercadopago-webhook` simplificado: só processa `type=payment`.
+    Em `status=approved` → `activate_subscription_from_webhook`
+    estendendo `current_period_end` em 1 mês. Outros topics
+    ficam só na trilha de `payment_events` pra auditoria.
+  - `supabase/config.toml` perdeu a entrada `[functions.sync-plan-to-mp]`.
+
+  **Frontend:**
+  - Removido `Plan.gateway_plan_id`, `syncPlanToMercadoPago`, badge
+    "Sincronizado/Pendente", botão "Sincronizar MP" no admin.
+  - `AdminPlansPage`: card do plano agora só mostra preço, benefícios,
+    permissões e quotas — sem passo extra de sincronização.
+  - `LandingPage.PricingCard`: CTAs simplificadas:
+    - Grátis + logado → "Ir para o dashboard".
+    - Grátis + visitante → "Começar grátis".
+    - Pago + logado → **"Assinar"** (dispara checkout imediato).
+    - Pago + visitante → **"Criar conta e assinar"** com legenda
+      "Pix · cartão · boleto".
+  - `RequirePermission.UpgradePrompt` deixa de filtrar por
+    `gateway_plan_id` — qualquer plano pago ativo que libera a
+    permissão vira CTA.
+  - `CHECKOUT_ERROR_LABEL` sem `plan_not_synced`/`lifetime_not_supported`;
+    adicionado `mp_token_missing`.
+
+  **Deploy desta fase:**
+  ```
+  supabase db push                     # aplica 0023 (drop gateway_plan_id)
+  supabase functions deploy create-subscription
+  supabase functions deploy mercadopago-webhook
+  # sync-plan-to-mp não existe mais — remova do painel se quiser
+  ```
+  Secrets inalterados (`MP_ACCESS_TOKEN`, `MP_WEBHOOK_SECRET`,
+  `SITE_URL`).
+
+  **Trade-off assumido**: cobrança não é automática. Mitigação
+  prevista (não implementada ainda): job diário que envia email
+  N dias antes de `current_period_end` com link pra renovar.
+- **2026-10-05** — **Integração Mercado Pago (Preapproval) — 0021 + Edge Functions.**
+  Modelo escolhido: **Preapproval** (assinatura recorrente nativa do MP),
+  não "pagamento por período". Vantagem: MP cobra mensalmente, lida com
+  retentativa de cartão. Vai mais código do nosso lado, mas UX de SaaS
+  real.
+
+  **Schema (0021_payments.sql):**
+  - `plans.gateway_plan_id text` (UNIQUE WHERE NOT NULL) — id do
+    `preapproval_plan` no MP.
+  - `subscriptions`: + `gateway`, `gateway_subscription_id` (UNIQUE
+    WHERE NOT NULL), `last_payment_at`, `current_period_end`,
+    `cancel_at_period_end`.
+  - `payment_events`: auditoria + idempotência via UNIQUE
+    `(gateway, gateway_event_id)`. Owner lê os próprios; admin lê tudo.
+    **Zero grant de INSERT** pra `authenticated` — só service_role.
+  - RPCs `record_payment_event`, `activate_subscription_from_webhook`,
+    `mark_subscription_cancelled` são `SECURITY DEFINER` sem grant pra
+    `authenticated` (REVOKE explícito). Chamadas só pela edge com
+    service_role. `my_subscription_detail()` é a RPC segura pro
+    frontend ler status da própria assinatura.
+  - `admin_update_plan` ganhou `p_gateway_plan_id text` (string vazia
+    = limpar, null = não alterar).
+
+  **Edge Functions (`supabase/functions/`):**
+  - `_shared/mercadopago.ts` — wrapper de `/preapproval_plan`,
+    `/preapproval`, `/v1/payments`, `/authorized_payments`.
+    `verifyWebhookSignature()` implementa HMAC-SHA256 com comparação
+    constant-time contra `x-signature` do MP.
+  - `_shared/supabase.ts` — `serviceClient()` (bypassa RLS, usada no
+    webhook) + `userClient(authHeader)` (respeita RLS do caller, usada
+    pra verificar admin).
+  - `sync-plan-to-mp`: autenticada, admin AAL2. Cria/atualiza
+    `preapproval_plan` no MP, grava `plans.gateway_plan_id`.
+  - `create-subscription`: autenticada, usuário comum. Cria
+    `preapproval` com `external_reference = user_id:plan_id`, devolve
+    `init_point` pro redirect.
+  - `mercadopago-webhook`: pública (sem auth, segurança via signature).
+    Processa `preapproval`, `authorized_payment`, `payment`. Grava
+    tudo em `payment_events` (idempotente). Em `authorized` → chama
+    `activate_subscription_from_webhook`; em `cancelled`/`paused` →
+    `mark_subscription_cancelled`.
+
+  **Frontend:**
+  - `src/services/checkout.ts` — `createCheckoutForPlan`,
+    `syncPlanToMercadoPago` chamam as edges via
+    `supabase.functions.invoke`.
+  - `src/hooks/useCheckout.ts` — `useStartCheckout()` mutation que faz
+    `window.location.href = init_point` em caso de sucesso.
+  - `LandingPage.PricingCard` — CTA condicional: visitante → `/signup`;
+    logado + plano sincronizado → botão "Assinar" (dispara checkout);
+    logado + plano NÃO sincronizado → "Em breve".
+  - `RequirePermission` → `UpgradePrompt` ganhou CTA "Assinar <Plano>"
+    que acha o primeiro plano pago+sync que libera a permissão
+    bloqueada.
+  - `AdminPlansPage` — cada plano pago mostra badge
+    "Sincronizado/Pendente" + botão "Sincronizar MP" que chama a edge.
+  - `Plan.gateway_plan_id` adicionado ao tipo TS.
+  - `src/services/plans.ts` passa a selecionar `gateway_plan_id` pro
+    frontend decidir qual botão mostrar.
+
+  **Padrão de segurança (anotação revisada):** pricing dos services do
+  profissional já é server-trusted — todas as RPCs
+  (`book_appointment`, `admin_create_appointment`,
+  `restore_require_confirmation`, `cancel_token`) lêem
+  `v_service.price_cents` via `SELECT FROM services WHERE id = …` e
+  gravam snapshot em `appointment_services.price_cents_snapshot`.
+  **Nenhum caminho** aceita preço vindo do cliente. Mesmo padrão vale
+  pra `plans.price_cents` → a edge `create-subscription` lê do DB
+  (service_role) e passa pro MP; cliente não dita valor.
+
+  **Configuração necessária no painel do Supabase (Settings → Edge
+  Functions → Secrets):**
+  - `MP_ACCESS_TOKEN` — token do app Mercado Pago (produção ou teste).
+  - `MP_WEBHOOK_SECRET` — string aleatória forte (mesma que você
+    configura no painel do MP em Webhooks → "Chave secreta").
+  - `SITE_URL` — ex.: `https://seu-dominio.com` (usado no `back_url`
+    do checkout).
+
+  **Configuração no painel do Mercado Pago:**
+  - Developers → Suas aplicações → criar app → pegar Access Token.
+  - Webhooks → cadastrar URL
+    `https://<projeto>.functions.supabase.co/mercadopago-webhook`
+    com eventos `payment`, `preapproval`, `authorized_payment`.
+  - Copiar a chave secreta gerada e colar em `MP_WEBHOOK_SECRET`.
+
+  **Deploy das functions** (com `supabase CLI` configurado):
+  ```
+  supabase functions deploy sync-plan-to-mp
+  supabase functions deploy create-subscription
+  supabase functions deploy mercadopago-webhook
+  ```
+  **Todas as 3** rodam com `verify_jwt = false` (ver
+  `supabase/config.toml`). Motivo: o gateway do Supabase valida o JWT
+  ANTES do código rodar, e o `OPTIONS` preflight do browser não traz
+  Authorization — resultado é 401 no preflight, CORS quebrado. A
+  autenticação continua forte: `sync-plan-to-mp` e `create-subscription`
+  checam o caller dentro da função via `admin_session_status` /
+  `auth.getUser()`; o webhook valida via x-signature.
+
+  **Próximas pendências abertas** (não bloqueantes):
+  - Edge `cancel-subscription` + botão "Cancelar assinatura" nas
+    Configurações do usuário.
+  - Página `/dashboard/configuracoes/assinatura` mostrando
+    `my_subscription_detail` + histórico de `payment_events`.
+  - Lembrete por email N dias antes de `current_period_end`.
+- **2026-10-05** — **Planos na landing + nota de plano no cadastro.**
+  Nova seção `Pricing` em `LandingPage` lê planos ativos de
+  `public.plans` via `usePublicPlans` (service `src/services/plans.ts`,
+  staleTime 10min). Cards por plano mostram preço (BRL), benefícios
+  do campo `features` (texto livre), permissões canônicas traduzidas
+  via `usePermissionCatalog` e quotas (`max_services`,
+  `max_appointments_per_month`). `id="planos"` migrou do `Finale`
+  pra cá — o link do header que já apontava pra `#planos` agora
+  entrega no lugar certo. CTAs: `price_cents === 0` → `/signup`;
+  pagos → `/signup?plan=<code>` com badge "Pagamento em breve"
+  (fluxo de checkout real fica para a próxima etapa). SignupPage
+  consome o query param com `useSearchParams` e exibe
+  `PlanIntentNotice`: se vier `?plan=pro`, texto diz "vamos criar sua
+  conta no Gratuito e abrir o checkout quando disponível"; sem query
+  param, apenas "você começa no Gratuito" com link `/#planos`.
+  Trigger de signup (0019) continua assinando no `free` por default —
+  nada mudou nos dados; a intenção fica só na URL por ora.
+  **Próxima etapa:** integração real com gateway (Mercado Pago,
+  Inter ou Stripe) — fluxo de checkout + webhook de confirmação +
+  RPC `activate_subscription(plan_id, external_ref)`.
+- **2026-10-05** — **Enforcement de quotas (0020).** Triggers
+  `BEFORE INSERT` em `services` e `appointments` leem o plano ativo
+  do dono (via `profiles → subscriptions → plans`) e levantam
+  `raise exception ... using errcode = 'P0100'` quando ultrapassam
+  `max_services` / `max_appointments_per_month`. Contagem:
+  **services** inclui todas as linhas (ativas e inativas — desativar
+  não libera slot); **appointments** conta somente linhas criadas no
+  mês corrente (`date_trunc('month', now())`) com `status != 'cancelled'`.
+  `book_appointment` e `admin_create_appointment` reescritos pra pegar
+  `sqlstate 'P0100'` no bloco do INSERT e devolver
+  `{error: 'quota_exceeded'}` em vez de propagar SQLSTATE cru. Nova
+  RPC `my_usage()` devolve snapshot `{services_count, max_services,
+  appointments_this_month, max_appointments_per_month}` para a UI.
+  Frontend ganhou `getMyUsage`/`useMyUsage` (staleTime 30s),
+  `isQuotaError(err)` em `services/permissions.ts` que detecta
+  `code === 'P0100'`, e `BOOKING_ERROR_LABEL.quota_exceeded`. A
+  `ServicesPage` mostra "X de Y serviços utilizados", desabilita o
+  botão "Novo serviço" ao atingir o limite e traduz o erro ao tentar
+  mesmo assim.
+- **2026-10-05** — **UI de permissões no editor de plano.** O modal
+  de criar/editar plano em `AdminPlansPage` agora renderiza o
+  catálogo (`permission_catalog`) como checkboxes agrupadas por
+  categoria. Novo hook `usePermissionCatalog` (staleTime infinito —
+  catálogo é estático). Payload de create/update envia
+  `permissions: string[]`. Card do plano exibe as permissões ativas
+  como badges `<code>`. Com isso o loop fica fechado: admin edita o
+  plano → RPC grava → trigger valida contra catálogo → `my_plan()`
+  reflete no cliente afetado no próximo refetch (staleTime 5min).
+- **2026-10-05** — **Permissões por plano (feature gating) — 0019.**
+  Migration `0019_permissions.sql` introduz `public.permission_catalog`
+  (code PK + categoria + nome + descrição) com 8 códigos seed, e
+  acrescenta `plans.permissions text[]` com trigger validando contra
+  catálogo + GIN index. Funções `has_feature(code)`, `my_permissions()`
+  e `my_plan()` servem tanto RLS quanto frontend. Plano `free`
+  criado como padrão; `handle_new_user` passa a chamar
+  `ensure_free_subscription` após provisionar o profile, com backfill
+  para usuários existentes. **Enforcement em duas camadas**: (a) RLS
+  em `products` e `portfolio_items` reescrita — SELECT dono livre,
+  INSERT/UPDATE/DELETE exigem `has_feature('products.manage')` /
+  `has_feature('portfolio.manage')`; (b) frontend ganhou
+  `src/lib/permissions.ts` (enum canônico), `src/services/permissions.ts`,
+  `useMyPlan`/`usePermissions`, `RequirePermission` em `AppRoutes.tsx`
+  nas rotas `/dashboard/produtos` e `/dashboard/portfolio`, e
+  `DashboardLayout` oculta os itens correspondentes do sidebar. RPCs
+  `admin_create_plan`/`admin_update_plan` passam a aceitar
+  `p_permissions text[]` (opcional no update → preserva atual) e
+  mapeiam `check_violation` para `invalid_permission`. `Plan.permissions`
+  adicionado ao tipo TS. Admin UI de editor de plano ainda não
+  renderiza as checkboxes de permissões — próximo passo.
+- **2026-10-05** — **Home `/` sempre renderiza a landing.** Removido
+  `src/routes/RootRedirect.tsx`; a rota raiz passa a montar
+  `LandingPage` direto (lazy). Antes, visitante com sessão era
+  redirecionado automaticamente para `/dashboard` ao abrir `/` — agora
+  só entra no app quando clica em "Entrar" no header (como o link
+  aponta para `/login` e `GuestOnlyRoute` manda sessão existente para
+  `/dashboard`, o efeito segue sendo um "login automático" ao clicar).
+- **2026-10-05** — **MFA: `unenroll` tolera 404.** `src/services/mfa.ts`
+  trata `AuthApiError { status: 404 }` como sucesso (DELETE idempotente).
+  Resolvia o caso em que `listFactors` devolvia um fator stale e o
+  cleanup abortava o enroll antes de gerar o QR.
 - **2026-10-05** — **Área administrativa + planos + MFA (0018).**
   Migration `0018_admin_and_plans.sql` adiciona tabelas `admin_users`,
   `plans`, `subscriptions` e `admin_audit_log`, com RLS exigindo

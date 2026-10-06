@@ -1,23 +1,65 @@
-import { useState, type FormEvent } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
+import { Sparkles } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { ConfirmEmailScreen } from '@/pages/auth/components/ConfirmEmailScreen'
+import { usePublicPlans } from '@/hooks/queries/usePublicPlans'
 
 type Phase = 'form' | 'already_registered' | 'success'
 
 export function SignupPage() {
-  const { signUp } = useAuth()
+  const { signUp, session } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+  const [searchParams] = useSearchParams()
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [phase, setPhase] = useState<Phase>('form')
+
+  // "Pra onde ir depois do cadastro" vem de dois lugares, nessa ordem:
+  //   1. location.state.redirectTo (set pelo ProtectedRoute quando o
+  //      visitante clicou "Assinar" na landing).
+  //   2. ?plan=<code> na URL (deep link direto, ex.: "/signup?plan=pro"
+  //      compartilhado em algum lugar) — reconstrói "/checkout/<code>".
+  // Nenhum dos dois → cai no dashboard depois.
+  const locationState = location.state as { redirectTo?: string } | null
+  const planCodeFromQuery = searchParams.get('plan')
+  const redirectTo =
+    locationState?.redirectTo ??
+    (planCodeFromQuery ? `/checkout/${planCodeFromQuery}` : null)
+
+  // Plano de intenção pra exibir no notice. Tenta extrair o code do
+  // redirectTo (/checkout/pro → "pro") ou usa o ?plan= direto.
+  const checkoutPlanCode = useMemo(() => {
+    if (planCodeFromQuery) return planCodeFromQuery
+    if (redirectTo?.startsWith('/checkout/')) {
+      return redirectTo.slice('/checkout/'.length)
+    }
+    return null
+  }, [planCodeFromQuery, redirectTo])
+
+  const { data: plans } = usePublicPlans()
+  const intendedPlan = useMemo(
+    () => plans?.find((p) => p.code === checkoutPlanCode) ?? null,
+    [plans, checkoutPlanCode],
+  )
+
+  // Se o signup não exige confirmação de email (Supabase pode estar
+  // configurado assim), a sessão fica ativa imediato depois do
+  // `signUp`. Nesse caso, naveguemos pro destino de intenção direto —
+  // sem passar pela tela "verifique seu email".
+  useEffect(() => {
+    if (phase === 'success' && session) {
+      navigate(redirectTo ?? '/dashboard', { replace: true })
+    }
+  }, [phase, session, redirectTo, navigate])
 
   function resetForm() {
     setName('')
@@ -45,7 +87,14 @@ export function SignupPage() {
 
     setSubmitting(true)
     try {
-      const result = await signUp(email.trim(), password, name.trim())
+      // Monta a URL absoluta pro email de confirmação devolver o
+      // usuário direto no destino de intenção (ex.: /checkout/pro).
+      const emailRedirectTo = redirectTo
+        ? `${window.location.origin}${redirectTo}`
+        : undefined
+      const result = await signUp(email.trim(), password, name.trim(), {
+        emailRedirectTo,
+      })
       if (result.alreadyRegistered) {
         setPhase('already_registered')
       } else {
@@ -73,7 +122,9 @@ export function SignupPage() {
             <Button
               className="w-full"
               onClick={() =>
-                navigate('/login', { state: { prefillEmail: email.trim() } })
+                navigate('/login', {
+                  state: { prefillEmail: email.trim(), redirectTo },
+                })
               }
             >
               Entrar nessa conta
@@ -105,6 +156,7 @@ export function SignupPage() {
           <CardDescription>Comece sua agenda profissional em minutos.</CardDescription>
         </CardHeader>
         <CardContent>
+          <PlanIntentNotice plan={intendedPlan} planCodeFromQuery={checkoutPlanCode} />
           <form onSubmit={handleSubmit} className="space-y-4" noValidate>
             <div className="space-y-2">
               <Label htmlFor="name">Nome</Label>
@@ -155,13 +207,62 @@ export function SignupPage() {
 
             <p className="text-center text-sm text-muted-foreground">
               Já tem conta?{' '}
-              <Link to="/login" className="font-medium text-foreground hover:underline">
+              <Link
+                to="/login"
+                state={redirectTo ? { redirectTo } : undefined}
+                className="font-medium text-foreground hover:underline"
+              >
                 Entrar
               </Link>
             </p>
           </form>
         </CardContent>
       </Card>
+    </div>
+  )
+}
+
+interface PlanIntentNoticeProps {
+  plan: { code: string; name: string } | null
+  planCodeFromQuery: string | null
+}
+
+/**
+ * Linha informativa sobre o plano. Hoje todo cadastro cria uma
+ * subscription no `free` (via trigger `handle_new_user`), então o
+ * texto esclarece isso — mesmo quando o visitante chegou de
+ * `/signup?plan=pro`, ele cria conta no free e sobe depois (quando
+ * o checkout estiver pronto).
+ */
+function PlanIntentNotice({ plan, planCodeFromQuery }: PlanIntentNoticeProps) {
+  const showPending = planCodeFromQuery && plan && plan.code !== 'free'
+  return (
+    <div className="mb-5 flex items-start gap-2.5 rounded-md border bg-muted/40 p-3">
+      <Sparkles className="mt-0.5 h-4 w-4 flex-shrink-0 text-muted-foreground" aria-hidden="true" />
+      <div className="space-y-0.5 text-xs text-muted-foreground">
+        {showPending ? (
+          <>
+            <p className="text-foreground">
+              Você escolheu o plano <strong>{plan.name}</strong>.
+            </p>
+            <p>
+              Vamos criar sua conta no plano Gratuito e abrir o checkout
+              do {plan.name} quando o pagamento estiver disponível.
+            </p>
+          </>
+        ) : (
+          <>
+            <p className="text-foreground">Você começa no plano Gratuito.</p>
+            <p>
+              Faça upgrade quando quiser —{' '}
+              <Link to="/#planos" className="underline hover:text-foreground">
+                ver planos
+              </Link>
+              .
+            </p>
+          </>
+        )}
+      </div>
     </div>
   )
 }

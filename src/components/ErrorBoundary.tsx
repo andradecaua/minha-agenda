@@ -17,13 +17,13 @@ interface ErrorBoundaryState {
  * dentro de uma página tela a aplicação inteira em branco.
  */
 export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  state: ErrorBoundaryState = { error: null }
+  override state: ErrorBoundaryState = { error: null }
 
   static getDerivedStateFromError(error: Error): ErrorBoundaryState {
     return { error }
   }
 
-  componentDidCatch(error: Error, info: ErrorInfo): void {
+  override componentDidCatch(error: Error, info: ErrorInfo): void {
     // Log mínimo para diagnóstico — em produção, enviaria para Sentry/etc.
     // eslint-disable-next-line no-console
     console.error('ErrorBoundary caught:', error, info)
@@ -31,7 +31,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
   reset = () => this.setState({ error: null })
 
-  render() {
+  override render() {
     const { error } = this.state
     if (!error) return this.props.children
 
