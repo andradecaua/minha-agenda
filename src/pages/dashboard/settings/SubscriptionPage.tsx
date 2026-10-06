@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowRight, Check, Loader2, Sparkles } from 'lucide-react'
+import { ArrowRight, Check, Info, Loader2, Sparkles } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -41,6 +41,18 @@ export function SubscriptionPage() {
   for (const entry of catalog ?? []) {
     permissionNameByCode.set(entry.code, entry.name)
   }
+
+  // Trava anti-duplicata: se já há assinatura paga ativa e não expirada,
+  // bloqueia qualquer "Assinar" novo. Evita cobrar duas vezes se o user
+  // clica outra vez sem perceber que já pagou. `cancelled`/`past_due`
+  // liberam o botão — é o caminho de retomar/renovar manualmente.
+  const expiresAt = myPlan?.expires_at ? new Date(myPlan.expires_at) : null
+  const hasActivePaidSub =
+    myPlan?.subscription_status === 'active' &&
+    myPlan?.plan_code !== null &&
+    myPlan?.plan_code !== 'free' &&
+    expiresAt !== null &&
+    expiresAt > new Date()
 
   async function handleSubscribe(plan: Plan) {
     setError(null)
@@ -86,6 +98,30 @@ export function SubscriptionPage() {
         </div>
       )}
 
+      {hasActivePaidSub && expiresAt && (
+        <div
+          role="status"
+          className="flex items-start gap-3 rounded-md border border-primary/30 bg-primary/5 px-4 py-3 text-sm"
+        >
+          <Info
+            className="mt-0.5 h-4 w-4 flex-shrink-0 text-primary"
+            aria-hidden="true"
+          />
+          <div className="space-y-0.5">
+            <p className="font-medium text-foreground">
+              Você já tem uma assinatura ativa.
+            </p>
+            <p className="text-muted-foreground">
+              Novas assinaturas serão liberadas após{' '}
+              <span className="font-medium text-foreground">
+                {formatDateBR(expiresAt.toISOString())}
+              </span>
+              . Isso evita cobrança duplicada no mesmo período.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div>
         <h3 className="mb-3 text-sm font-medium text-muted-foreground">
           Planos disponíveis
@@ -109,6 +145,7 @@ export function SubscriptionPage() {
                 isCurrent={myPlan?.plan_code === plan.code}
                 isSubscribing={startingPlanId === plan.id}
                 anySubscribing={startingPlanId !== null}
+                lockedUntilExpire={hasActivePaidSub}
                 onSubscribe={() => handleSubscribe(plan)}
                 permissionName={(code) =>
                   permissionNameByCode.get(code) ?? code
@@ -206,6 +243,8 @@ interface PlanCardProps {
   isCurrent: boolean
   isSubscribing: boolean
   anySubscribing: boolean
+  /** Já existe assinatura paga ativa — bloqueia novo "Assinar". */
+  lockedUntilExpire: boolean
   onSubscribe: () => void
   permissionName: (code: string) => string
 }
@@ -215,6 +254,7 @@ function PlanCard({
   isCurrent,
   isSubscribing,
   anySubscribing,
+  lockedUntilExpire,
   onSubscribe,
   permissionName,
 }: PlanCardProps) {
@@ -315,6 +355,12 @@ function PlanCard({
           // free entrega.
           <Button variant="outline" className="w-full" disabled>
             Plano padrão
+          </Button>
+        ) : lockedUntilExpire ? (
+          // Já existe assinatura paga vigente — bloqueia o clique pra
+          // evitar cobrança duplicada no mesmo período.
+          <Button variant="outline" className="w-full" disabled>
+            Assinatura ativa em outro plano
           </Button>
         ) : (
           <Button

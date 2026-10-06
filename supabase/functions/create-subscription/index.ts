@@ -66,6 +66,11 @@ Deno.serve(async (req) => {
 
     // --- 4. Cria Preference no MP ------------------------------
     const siteUrl = Deno.env.get('SITE_URL') ?? 'https://localhost'
+    // SUPABASE_URL é auto-populado em edge functions.
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')
+    const notificationUrl = supabaseUrl
+      ? `${supabaseUrl}/functions/v1/mercadopago-webhook`
+      : undefined
     try {
       const preference = await createPreference({
         title: `${plan.name} — Minha Agenda`,
@@ -75,6 +80,7 @@ Deno.serve(async (req) => {
         // conseguir mapear sem outro round-trip ao DB.
         externalReference: `${user.id}:${plan.id}`,
         backUrlBase: `${siteUrl}/dashboard`,
+        notificationUrl,
         payerEmail: user.email ?? undefined,
       })
 

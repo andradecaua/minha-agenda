@@ -51,6 +51,7 @@ export interface PreferenceInput {
   amountCents: number    // valor em centavos
   externalReference: string
   backUrlBase: string    // ex.: https://app.exemplo.com/dashboard
+  notificationUrl?: string // webhook por-preference; mais confiável em test mode
   payerEmail?: string    // opcional; MP coleta na tela se omitido
   currencyId?: 'BRL'
 }
@@ -95,6 +96,15 @@ export async function createPreference(
     statement_descriptor: 'MINHA AGENDA',
   }
 
+  if (input.notificationUrl) {
+    // Webhook por-preference. Em test mode, o MP não dispara o webhook
+    // global de forma confiável; o notification_url explícito aqui
+    // garante que a função mercadopago-webhook seja chamada após o
+    // pagamento. Em prod, serve de fallback — se o global falhar, este
+    // ainda roda.
+    body.notification_url = input.notificationUrl
+  }
+
   if (input.payerEmail) {
     body.payer = { email: input.payerEmail }
   }
@@ -120,6 +130,8 @@ export interface PaymentResponse {
   payment_type_id?: string     // "credit_card", "bank_transfer", "ticket"
   date_approved?: string | null
   date_created?: string | null
+  /** true = produção real; false = sandbox/credenciais de teste. */
+  live_mode?: boolean
 }
 
 export async function getPayment(id: string): Promise<PaymentResponse> {
@@ -129,13 +141,25 @@ export async function getPayment(id: string): Promise<PaymentResponse> {
 // =============================================================
 // Verificação de assinatura do webhook (HMAC-SHA256).
 // Doc: https://www.mercadopago.com.br/developers/pt/docs/your-integrations/notifications/webhooks#bookmark_valida%C3%A7%C3%A3o_de_origem
+//
+// Em notificações via `notification_url` de Preference, o `data.id`
+// pode vir **só no body** ou **só na query** dependendo da versão do
+// MP. A doc oficial é ambígua. A gente tenta todas as variantes
+// razoáveis — se nenhuma bater, retorna false. Em sucesso loga qual
+// variante funcionou pra deixar documentado qual a MP está usando.
 // =============================================================
-export async function verifyWebhookSignature(
-  xSignature: string | null,
-  xRequestId: string | null,
-  dataId: string,
-  secret: string,
-): Promise<boolean> {
+export interface VerifyInput {
+  xSignature: string | null
+  xRequestId: string | null
+  /** `data.id` extraído da URL query (`?data.id=...`); pode ser null. */
+  idFromQuery: string | null
+  /** `data.id` extraído do body JSON; pode ser null. */
+  idFromBody: string | null
+  secret: string
+}
+
+export async function verifyWebhookSignature(input: VerifyInput): Promise<boolean> {
+  const { xSignature, xRequestId, idFromQuery, idFromBody, secret } = input
   if (!xSignature || !xRequestId) return false
 
   const parts = Object.fromEntries(
@@ -148,7 +172,15 @@ export async function verifyWebhookSignature(
   const v1 = parts.v1
   if (!ts || !v1) return false
 
-  const manifest = `id:${dataId};request-id:${xRequestId};ts:${ts};`
+  // Candidatos ordenados pela prevalência observada em prod.
+  // 1. body: quando `notification_url` é per-preference
+  // 2. query: quando é webhook global do painel (traz `?data.id=`)
+  // 3. empty: alguns clientes do MP omitem o id no manifesto
+  const candidates: Array<{ label: string; id: string }> = []
+  if (idFromBody) candidates.push({ label: 'body', id: idFromBody })
+  if (idFromQuery) candidates.push({ label: 'query', id: idFromQuery })
+  candidates.push({ label: 'empty', id: '' })
+
   const key = await crypto.subtle.importKey(
     'raw',
     new TextEncoder().encode(secret),
@@ -156,20 +188,29 @@ export async function verifyWebhookSignature(
     false,
     ['sign'],
   )
-  const sigBytes = await crypto.subtle.sign(
-    'HMAC',
-    key,
-    new TextEncoder().encode(manifest),
-  )
-  const computed = Array.from(new Uint8Array(sigBytes))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('')
 
-  // Comparação constant-time pra evitar timing attack.
-  if (computed.length !== v1.length) return false
-  let diff = 0
-  for (let i = 0; i < computed.length; i++) {
-    diff |= computed.charCodeAt(i) ^ v1.charCodeAt(i)
+  for (const c of candidates) {
+    const manifest = `id:${c.id};request-id:${xRequestId};ts:${ts};`
+    const sigBytes = await crypto.subtle.sign(
+      'HMAC',
+      key,
+      new TextEncoder().encode(manifest),
+    )
+    const computed = Array.from(new Uint8Array(sigBytes))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('')
+
+    if (computed.length === v1.length) {
+      let diff = 0
+      for (let i = 0; i < computed.length; i++) {
+        diff |= computed.charCodeAt(i) ^ v1.charCodeAt(i)
+      }
+      if (diff === 0) {
+        console.log('[webhook] signature matched variant=', c.label)
+        return true
+      }
+    }
   }
-  return diff === 0
+
+  return false
 }
