@@ -1,19 +1,32 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" fill="#0f172a"/>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1e293b"/>
+      <stop offset="1" stop-color="#0f172a"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.35" r="0.6">
+      <stop offset="0" stop-color="#334155" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#334155" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="stroke" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#e2e8f0"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <rect width="512" height="512" fill="url(#glow)"/>
+
   <g transform="translate(96 96)"
-     stroke="#ffffff"
+     stroke="url(#stroke)"
      stroke-width="22"
      stroke-linecap="round"
      stroke-linejoin="round"
      fill="none">
-    <!-- calendar body (320x320 glyph area, scaled from lucide 24x24) -->
-    <rect x="40" y="40" width="240" height="240" rx="28"/>
-    <!-- top rings -->
+    <rect x="40" y="40" width="240" height="240" rx="28" fill="#0f172a"/>
     <path d="M213 13v53"/>
     <path d="M107 13v53"/>
-    <!-- divider -->
     <path d="M40 120h240"/>
-    <!-- check -->
     <path d="M120 200l27 27 53-53"/>
   </g>
 </svg>

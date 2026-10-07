@@ -44,6 +44,10 @@ export default defineConfig({
         theme_color: '#0f172a',
         background_color: '#ffffff',
         display: 'standalone',
+        // Fallbacks explícitos — alguns Chromes Android no fluxo WebAPK
+        // consultam `display_override` antes de `display` e rejeitam o
+        // manifest se ambos não concordarem.
+        display_override: ['standalone', 'minimal-ui'],
         orientation: 'portrait',
         // start_url público — rotas autenticadas como `/dashboard` fazem o
         // validador do WebAPK (Android) hesitar; a landing responde sem
