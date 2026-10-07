@@ -5,6 +5,7 @@ import { queryClient } from '@/lib/queryClient'
 import { AppRoutes } from '@/routes/AppRoutes'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { PwaUpdateBanner } from '@/components/PwaUpdateBanner'
+import { SessionGuard } from '@/components/SessionGuard'
 
 export function App() {
   return (
@@ -13,6 +14,7 @@ export function App() {
         <AuthProvider>
           <BrowserRouter>
             <AppRoutes />
+            <SessionGuard />
             <PwaUpdateBanner />
           </BrowserRouter>
         </AuthProvider>

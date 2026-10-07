@@ -667,6 +667,33 @@ Se faltar atualização, considere a entrega incompleta.
 
 ## Changelog
 
+- **2026-10-07** — **Sessão única por usuário (v0.3.3, migration 0030).**
+
+  Combate roubo de licença / compartilhamento de credencial. Um usuário
+  logado em um dispositivo B derruba o A automaticamente em até 60s.
+
+  **DB:** tabela `user_sessions (user_id pk, session_id uuid)` com RLS
+  strict (self-only read/write). NÃO coluna em `profiles` — este tem
+  `public_select` pra `/p/<slug>` e não queremos vazar o session_id
+  pro anon.
+
+  **Frontend:**
+  - `src/hooks/useSessionGuard.ts` — gerencia o claim: no login gera um
+    uuid, salva em `localStorage` (compartilhado entre abas do mesmo
+    device → abas convivem) e grava em `user_sessions`. Heartbeat de
+    60s compara DB vs local; mismatch = kick.
+  - `src/components/SessionGuard.tsx` — overlay fullscreen com "Sessão
+    encerrada / Entrar novamente". Montado em `App.tsx` dentro do
+    `BrowserRouter` pra ter acesso a `useNavigate`.
+  - Idle após logout: hook limpa a chave local e reseta estado.
+
+  **Comportamento esperado:**
+  - Device B loga → `user_sessions.session_id` vira UUID_B.
+  - Device A no próximo heartbeat (≤60s) detecta mismatch → mostra modal
+    e desloga.
+  - Múltiplas abas do mesmo device: todas lêem o mesmo
+    `localStorage.minha-agenda:session-claim`, nenhum kick entre elas.
+
 - **2026-10-07** — **Cleanup de blobs via trigger (v0.3.2, migration 0029).**
 
   Antes: delete de portfolio_item / service / product / avatar deixava o
