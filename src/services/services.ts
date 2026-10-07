@@ -1,9 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import {
-  deleteImage,
-  pathFromPublicUrl,
-  uploadImage,
-} from '@/services/storage'
+import { deleteImage, uploadImage } from '@/services/storage'
 import type { Service } from '@/types/database'
 
 export type ServiceInput = Pick<
@@ -122,20 +118,8 @@ export async function updateService(
     throw error
   }
 
-  // Best-effort: remove o blob antigo (trocado ou removido). Prefere
-  // `image_storage_path` ao `pathFromPublicUrl` quando disponível —
-  // é a fonte precisa; a URL é só derivada.
-  if (imageFile || removeImage) {
-    const oldPath =
-      current.image_storage_path ?? pathFromPublicUrl('services', current.image_url)
-    if (oldPath && oldPath !== newUploadPath) {
-      try {
-        await deleteImage('services', oldPath)
-      } catch {
-        /* ignore */
-      }
-    }
-  }
+  // Blob antigo é apagado por trigger (`services_cleanup_blob_upd`,
+  // migration 0029) quando `image_url`/`image_storage_path` mudam.
 
   return data as Service
 }
@@ -150,17 +134,11 @@ export async function toggleServiceActive(
 /**
  * Pode falhar se o serviço tiver agendamentos (FK ON DELETE RESTRICT).
  * O frontend traduz o erro e sugere apenas desativar.
+ *
+ * Trigger `services_cleanup_blob_del` (migration 0029) remove o blob
+ * na mesma transação do DELETE quando este é bem-sucedido.
  */
 export async function deleteService(service: Service): Promise<void> {
   const { error } = await supabase.from('services').delete().eq('id', service.id)
   if (error) throw error
-  const path =
-    service.image_storage_path ?? pathFromPublicUrl('services', service.image_url)
-  if (path) {
-    try {
-      await deleteImage('services', path)
-    } catch {
-      /* ignore */
-    }
-  }
 }

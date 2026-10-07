@@ -667,6 +667,25 @@ Se faltar atualização, considere a entrega incompleta.
 
 ## Changelog
 
+- **2026-10-07** — **Cleanup de blobs via trigger (v0.3.2, migration 0029).**
+
+  Antes: delete de portfolio_item / service / product / avatar deixava o
+  blob no bucket. Causa: o frontend chamava `storage.remove()` dentro
+  de `try/catch` que engolia erros — qualquer falha (policy, path
+  diferente, 0 rows deletadas por RLS) era invisível.
+
+  Agora: triggers `AFTER DELETE` / `AFTER UPDATE` em `portfolio_items`,
+  `services`, `products` e `profiles` apagam o blob na MESMA transação
+  do write principal, com `SECURITY DEFINER`. Se o cleanup falhar, a
+  transação toda falha. Helper `storage_path_from_public_url(bucket,
+  url)` extrai o path das tabelas que guardam só o URL público
+  (products, profiles).
+
+  A migration também roda cleanup único de órfãos acumulados antes do
+  fix. Frontend: removemos as chamadas `deleteImage()` best-effort
+  redundantes (mantidos só os rollbacks pós-upload-falho, que o
+  trigger não cobre).
+
 - **2026-10-07** — **Fecha enumeração dos buckets de Storage (migration
   0028).** Dropa as 4 policies `*_public_select` em `storage.objects`
   (avatars, portfolio, products, services). Resolve o alerta do advisor

@@ -1,9 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import {
-  deleteImage,
-  pathFromPublicUrl,
-  uploadImage,
-} from '@/services/storage'
+import { deleteImage, uploadImage } from '@/services/storage'
 import type { Product } from '@/types/database'
 
 export type ProductInput = Pick<
@@ -99,17 +95,9 @@ export async function updateProduct(
     throw error
   }
 
-  // Best-effort: remove o blob antigo (se trocado ou removido)
-  if (imageFile || removeImage) {
-    const oldPath = pathFromPublicUrl('products', current.image_url)
-    if (oldPath && oldPath !== newUploadPath) {
-      try {
-        await deleteImage('products', oldPath)
-      } catch {
-        /* ignore */
-      }
-    }
-  }
+  // Blob antigo é apagado por trigger (`products_cleanup_blob_upd`,
+  // migration 0029) quando o UPDATE muda `image_url`. Não precisamos
+  // mais chamar `storage.remove` daqui.
 
   return data as Product
 }
@@ -122,14 +110,8 @@ export async function toggleProductActive(
 }
 
 export async function deleteProduct(product: Product): Promise<void> {
+  // Trigger `products_cleanup_blob_del` (migration 0029) remove o blob
+  // na mesma transação do DELETE.
   const { error } = await supabase.from('products').delete().eq('id', product.id)
   if (error) throw error
-  const path = pathFromPublicUrl('products', product.image_url)
-  if (path) {
-    try {
-      await deleteImage('products', path)
-    } catch {
-      /* ignore */
-    }
-  }
 }

@@ -79,15 +79,13 @@ export async function updatePortfolioItem(
 }
 
 export async function deletePortfolioItem(item: PortfolioItem): Promise<void> {
+  // O blob é apagado por trigger (`portfolio_items_cleanup_blob`,
+  // migration 0029) na mesma transação do DELETE. Não precisamos
+  // mais do `supabase.storage.remove()` daqui — ele silenciava erros
+  // e deixava blobs órfãos no bucket.
   const { error } = await supabase
     .from('portfolio_items')
     .delete()
     .eq('id', item.id)
   if (error) throw error
-  // Best-effort — mesmo se o blob falhar em sumir, a linha já saiu.
-  try {
-    await deleteImage('portfolio', item.storage_path)
-  } catch {
-    /* ignore */
-  }
 }
