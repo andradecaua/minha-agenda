@@ -35,6 +35,7 @@ export default defineConfig({
         'apple-touch-icon-180x180.png',
       ],
       manifest: {
+        id: '/',
         name: 'Minha Agenda',
         short_name: 'Minha Agenda',
         description:
@@ -44,8 +45,12 @@ export default defineConfig({
         background_color: '#ffffff',
         display: 'standalone',
         orientation: 'portrait',
-        start_url: '/dashboard',
+        // start_url público — rotas autenticadas como `/dashboard` fazem o
+        // validador do WebAPK (Android) hesitar; a landing responde sem
+        // redirect e dispara o SPA que já sabe pra onde mandar o user.
+        start_url: '/',
         scope: '/',
+        prefer_related_applications: false,
         icons: [
           { src: 'pwa-64x64.png', sizes: '64x64', type: 'image/png' },
           { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
