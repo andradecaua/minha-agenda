@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { Route, Routes } from 'react-router-dom'
+import { Navigate, Route, Routes } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 
 import { PublicLayout } from '@/layouts/PublicLayout'
@@ -9,6 +9,7 @@ import { GuestOnlyRoute } from '@/routes/GuestOnlyRoute'
 import { AdminRoute } from '@/routes/AdminRoute'
 import { RequirePermission } from '@/routes/RequirePermission'
 import { PERMISSIONS } from '@/lib/permissions'
+import { useAuth } from '@/hooks/useAuth'
 
 // Páginas de auth — pequenas, mantidas estáticas para não piscar no
 // primeiro carregamento (que geralmente cai em /login).
@@ -102,9 +103,9 @@ const AppointmentDetailPublicPage = lazy(() =>
   })),
 )
 // Landing é lazy — visitante que entra direto em outra rota não baixa.
-// Renderizada em `/` sempre, inclusive para usuários autenticados: o
-// "entrar automático" acontece quando clicam no botão Entrar, não ao
-// abrir a home.
+// Renderizada em `/` só para visitantes anônimos vindos da web: usuário
+// com sessão vai direto pro /dashboard, e PWA instalada (standalone)
+// pula pro /login pra não ter cara de site. Ver `RootEntry` abaixo.
 const LandingPage = lazy(() =>
   import('@/pages/public/LandingPage').then((m) => ({ default: m.LandingPage })),
 )
@@ -149,11 +150,40 @@ function RouteFallback() {
   )
 }
 
+/**
+ * Entrada da raiz `/`. Decide entre landing, dashboard ou login:
+ *
+ * - Com sessão → `/dashboard`, independente de onde o acesso veio.
+ * - Sem sessão + PWA aberta em standalone → `/login`, pra passar
+ *   sensação de app (quem instalou já é usuário, não visitante).
+ * - Sem sessão + browser normal → landing (marketing).
+ *
+ * `start_url` do manifest continua `/` porque o validador WebAPK do
+ * Chrome Android rejeita rotas autenticadas; a decisão vive aqui no
+ * SPA, que já tem o estado da sessão em mãos.
+ */
+function RootEntry() {
+  const { session, loading } = useAuth()
+
+  if (loading) return <RouteFallback />
+  if (session) return <Navigate to="/dashboard" replace />
+  if (isStandaloneDisplay()) return <Navigate to="/login" replace />
+  return <LandingPage />
+}
+
+function isStandaloneDisplay(): boolean {
+  if (typeof window === 'undefined') return false
+  if (window.matchMedia('(display-mode: standalone)').matches) return true
+  // iOS Safari expõe `navigator.standalone` (non-standard, legacy).
+  const nav = window.navigator as Navigator & { standalone?: boolean }
+  return nav.standalone === true
+}
+
 export function AppRoutes() {
   return (
     <Suspense fallback={<RouteFallback />}>
       <Routes>
-        <Route path="/" element={<LandingPage />} />
+        <Route path="/" element={<RootEntry />} />
 
         <Route element={<GuestOnlyRoute />}>
           <Route element={<PublicLayout />}>
