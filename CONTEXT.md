@@ -667,6 +667,18 @@ Se faltar atualização, considere a entrega incompleta.
 
 ## Changelog
 
+- **2026-10-07** — **Fecha enumeração dos buckets de Storage (migration
+  0028).** Dropa as 4 policies `*_public_select` em `storage.objects`
+  (avatars, portfolio, products, services). Resolve o alerta do advisor
+  "Clients can list all files in this bucket". Imagens continuam
+  renderizando normalmente (bucket é `public = true` → endpoint
+  `/storage/v1/object/public/...` serve direto sem passar por RLS). O
+  que a policy ampla permitia e agora não mais: `storage.list()`
+  enumerar paths de todos os profissionais. Frontend nunca usou `.list()`,
+  só `upload`/`getPublicUrl`/`remove` — nenhuma mudança de código
+  necessária. Se futuramente precisarmos listar "meus uploads", criar
+  policy com check de prefixo (`current_professional_id()::text`).
+
 - **2026-10-07** — **Banner de atualização do PWA (v0.3.1).**
 
   Troca `registerType: 'autoUpdate'` por `'prompt'` no `vite.config.ts`
