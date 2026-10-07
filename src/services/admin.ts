@@ -34,6 +34,7 @@ export const ADMIN_ERROR_LABEL: Record<string, string> = {
   invalid_status: 'Status inválido.',
   invalid_permission: 'Permissão desconhecida: confira os códigos no catálogo.',
   cannot_self_demote: 'Você não pode remover a si mesmo do grupo de administradores.',
+  body_required: 'Escreva uma mensagem.',
 }
 
 type RpcResult<T> = ({ status: 'ok' } & T) | { status: 'error'; error: string }
@@ -248,6 +249,121 @@ export async function updatePlan(input: UpdatePlanInput): Promise<void> {
 
 export async function deletePlan(planId: string): Promise<void> {
   const { data, error } = await supabase.rpc('admin_delete_plan', { p_plan_id: planId })
+  if (error) throw error
+  const result = parseResult<unknown>(data)
+  throwOnError(result)
+}
+
+// =============== Tickets ===================
+
+export type AdminTicketStatus = 'open' | 'in_progress' | 'resolved' | 'closed'
+export type AdminTicketPriority = 'normal' | 'high'
+
+export interface AdminTicketRow {
+  id: string
+  user_id: string
+  subject: string
+  status: AdminTicketStatus
+  priority: AdminTicketPriority
+  sla_due_at: string
+  plan_code_at_open: string | null
+  created_at: string
+  updated_at: string
+  resolved_at: string | null
+  sla_breached: boolean
+  messages_count: number
+  last_message_at: string | null
+  user_name: string | null
+  user_slug: string | null
+  user_email: string | null
+}
+
+export interface AdminTicketListResult {
+  total: number
+  tickets: AdminTicketRow[]
+}
+
+export interface AdminTicketMessage {
+  id: string
+  ticket_id: string
+  author_kind: 'user' | 'admin'
+  author_id: string | null
+  body: string
+  created_at: string
+}
+
+export interface AdminTicketDetail {
+  id: string
+  user_id: string
+  subject: string
+  status: AdminTicketStatus
+  priority: AdminTicketPriority
+  sla_due_at: string
+  plan_code_at_open: string | null
+  created_at: string
+  updated_at: string
+  resolved_at: string | null
+  user_name: string | null
+  user_slug: string | null
+  user_email: string | null
+}
+
+export async function listAdminTickets(params: {
+  status?: AdminTicketStatus | null
+  priority?: AdminTicketPriority | null
+  limit?: number
+  offset?: number
+}): Promise<AdminTicketListResult> {
+  const { data, error } = await supabase.rpc('admin_list_support_tickets', {
+    p_status: params.status ?? null,
+    p_priority: params.priority ?? null,
+    p_limit: params.limit ?? 50,
+    p_offset: params.offset ?? 0,
+  })
+  if (error) throw error
+  const result = parseResult<AdminTicketListResult>(data)
+  throwOnError(result)
+  return { total: result.total, tickets: result.tickets }
+}
+
+export async function getAdminTicket(
+  ticketId: string,
+): Promise<{ ticket: AdminTicketDetail; messages: AdminTicketMessage[] }> {
+  const { data, error } = await supabase.rpc('admin_get_support_ticket', {
+    p_ticket_id: ticketId,
+  })
+  if (error) throw error
+  const result = parseResult<{ ticket: AdminTicketDetail; messages: AdminTicketMessage[] }>(data)
+  throwOnError(result)
+  return { ticket: result.ticket, messages: result.messages }
+}
+
+export async function adminReplyTicket(ticketId: string, body: string): Promise<void> {
+  const { data, error } = await supabase.rpc('admin_reply_support_ticket', {
+    p_ticket_id: ticketId,
+    p_body: body,
+  })
+  if (error) throw error
+  const result = parseResult<{ message_id: string }>(data)
+  throwOnError(result)
+  // Fire-and-forget: notifica o dono do ticket.
+  void supabase.functions
+    .invoke('send-ticket-notification', {
+      body: { ticket_id: ticketId, event: 'admin_reply' },
+    })
+    .catch((err) => {
+      console.warn('[admin.tickets] falha ao notificar usuário:', err)
+    })
+}
+
+export async function adminUpdateTicketStatus(
+  ticketId: string,
+  status: AdminTicketStatus,
+): Promise<void> {
+  const { data, error } = await supabase.rpc('admin_update_support_ticket_status', {
+    p_ticket_id: ticketId,
+    p_status: status,
+  })
   if (error) throw error
   const result = parseResult<unknown>(data)
   throwOnError(result)

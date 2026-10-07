@@ -5,6 +5,7 @@ import {
   Download,
   Images,
   LayoutDashboard,
+  LifeBuoy,
   LogOut,
   Menu,
   Package,
@@ -47,6 +48,7 @@ const NAV_ITEMS: NavItem[] = [
     icon: Package,
     permission: PERMISSIONS.PRODUCTS_MANAGE,
   },
+  { to: '/dashboard/suporte', label: 'Suporte', icon: LifeBuoy },
   { to: '/dashboard/configuracoes', label: 'Configurações', icon: Settings },
 ]
 

@@ -667,6 +667,60 @@ Se faltar atualização, considere a entrega incompleta.
 
 ## Changelog
 
+- **2026-10-07** — **Suporte via tickets (v0.3.0).**
+
+  Canal de suporte dentro do app, com thread user ↔ admin e notificação
+  por email nos dois sentidos. Convive com o "responda este email" dos
+  transacionais — aqui o estado vive no banco pra admin ver tudo em um
+  só lugar.
+
+  **DB (migration `0027_support_tickets.sql`):**
+  - `tickets (id, user_id, subject, status, priority, sla_due_at,
+    plan_code_at_open, resolved_at)` + `ticket_messages (ticket_id,
+    author_kind, body)`.
+  - **SLA congelado na criação:** 24h pra plano pago ativo (`price_cents
+    > 0` + status em `active|trialing|past_due` + não expirado), 72h
+    pros demais. Helper `support_sla_for_user(uuid)` resolve.
+  - **Priority** (`'normal' | 'high'`) é derivada do mesmo check e
+    serve pro admin ordenar/filtrar — não é "SLA fast-track" por si só.
+  - **RLS:** user vê apenas os próprios (via `tickets_self_select`);
+    admin elevado (AAL2) vê tudo. Escrita só via RPCs SECURITY DEFINER
+    — não existe policy de INSERT/UPDATE/DELETE.
+  - **RPCs user:** `create_support_ticket`, `list_my_support_tickets`,
+    `get_my_support_ticket`, `reply_my_support_ticket` (resposta em
+    ticket `resolved` reabre pra `open`).
+  - **RPCs admin:** `admin_list_support_tickets` (filtros status +
+    priority), `admin_get_support_ticket`, `admin_reply_support_ticket`
+    (reposta em ticket `open` muda pra `in_progress`),
+    `admin_update_support_ticket_status`. Toda ação admin audita.
+
+  **Edge Function `send-ticket-notification`:**
+  - Chamada em fire-and-forget pelo frontend após create/reply, com
+    `{ ticket_id, event: 'created' | 'user_reply' | 'admin_reply' }`.
+  - `created` + `user_reply` → envia pro `SUPPORT_EMAIL_TO` (nova env).
+  - `admin_reply` → envia pro email do dono do ticket (via service
+    role em `auth.admin.getUserById`).
+  - Autoriza por JWT: lê o ticket com `userClient(auth)` primeiro —
+    se o caller não enxerga via RLS, retorna 403.
+  - Reusa `_shared/email.ts` (SMTP agnóstico, port 465 TLS / 587
+    STARTTLS). Idempotência não garantida — pior caso = email duplicado,
+    aceitável pra tráfego humano.
+
+  **Novas secrets no Supabase:**
+  - `SUPPORT_EMAIL_TO` — email do time de suporte (único novo secret;
+    SMTP_* já existia).
+
+  **Frontend:**
+  - User: `/dashboard/suporte` (lista + modal "Abrir ticket" + badge de
+    SLA vencido) e `/dashboard/suporte/:id` (thread + reply). Banner no
+    topo mostra SLA do plano. Item na sidebar com ícone `LifeBuoy`.
+  - Admin: `/admin/tickets` (tabela com filtros status/priority,
+    badge "Vencido" quando `sla_due_at < now()` e status aberto) e
+    `/admin/tickets/:id` (thread, resposta, mudar status). Item na
+    sidebar admin.
+  - Services: `src/services/tickets.ts` (user) + aditivos em
+    `src/services/admin.ts` (admin).
+
 - **2026-10-07** — **PWA instalável (v0.2.0).**
 
   App agora é um PWA instalável no Android/Desktop (via Chrome/Edge/

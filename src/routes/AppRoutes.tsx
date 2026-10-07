@@ -92,6 +92,16 @@ const SubscriptionPage = lazy(() =>
     default: m.SubscriptionPage,
   })),
 )
+const SupportPage = lazy(() =>
+  import('@/pages/dashboard/support/SupportPage').then((m) => ({
+    default: m.SupportPage,
+  })),
+)
+const SupportTicketPage = lazy(() =>
+  import('@/pages/dashboard/support/SupportTicketPage').then((m) => ({
+    default: m.SupportTicketPage,
+  })),
+)
 const ProfessionalPage = lazy(() =>
   import('@/pages/public/ProfessionalPage').then((m) => ({
     default: m.ProfessionalPage,
@@ -133,6 +143,12 @@ const AdminPlansPage = lazy(() =>
 )
 const AdminReportsPage = lazy(() =>
   import('@/pages/admin/AdminReportsPage').then((m) => ({ default: m.AdminReportsPage })),
+)
+const AdminTicketsPage = lazy(() =>
+  import('@/pages/admin/AdminTicketsPage').then((m) => ({ default: m.AdminTicketsPage })),
+)
+const AdminTicketDetailPage = lazy(() =>
+  import('@/pages/admin/AdminTicketDetailPage').then((m) => ({ default: m.AdminTicketDetailPage })),
 )
 const MfaEnrollPage = lazy(() =>
   import('@/pages/admin/MfaEnrollPage').then((m) => ({ default: m.MfaEnrollPage })),
@@ -222,6 +238,8 @@ export function AppRoutes() {
               <Route path="users" element={<AdminUsersPage />} />
               <Route path="users/:id" element={<AdminUserDetailPage />} />
               <Route path="plans" element={<AdminPlansPage />} />
+              <Route path="tickets" element={<AdminTicketsPage />} />
+              <Route path="tickets/:id" element={<AdminTicketDetailPage />} />
               <Route path="reports" element={<AdminReportsPage />} />
             </Route>
           </Route>
@@ -239,6 +257,8 @@ export function AppRoutes() {
             <Route element={<RequirePermission code={PERMISSIONS.PORTFOLIO_MANAGE} />}>
               <Route path="/dashboard/portfolio" element={<PortfolioPage />} />
             </Route>
+            <Route path="/dashboard/suporte" element={<SupportPage />} />
+            <Route path="/dashboard/suporte/:id" element={<SupportTicketPage />} />
             <Route path="/dashboard/configuracoes" element={<SettingsLayout />}>
               <Route index element={<SettingsIndexPage />} />
               <Route path="perfil" element={<ProfilePage />} />

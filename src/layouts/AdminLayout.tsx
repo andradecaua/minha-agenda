@@ -3,6 +3,7 @@ import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import {
   BarChart3,
   FileText,
+  LifeBuoy,
   LogOut,
   Menu,
   Package,
@@ -26,6 +27,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/admin', label: 'Visão geral', icon: BarChart3, end: true },
   { to: '/admin/users', label: 'Usuários', icon: Users },
   { to: '/admin/plans', label: 'Planos', icon: Package },
+  { to: '/admin/tickets', label: 'Suporte', icon: LifeBuoy },
   { to: '/admin/reports', label: 'Auditoria', icon: FileText },
 ]
 
