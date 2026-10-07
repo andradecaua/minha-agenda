@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import {
   CalendarDays,
+  Download,
   Images,
   LayoutDashboard,
   LogOut,
@@ -16,6 +17,7 @@ import {
 import { useAuth } from '@/hooks/useAuth'
 import { useAdminSession } from '@/hooks/queries/useAdminSession'
 import { usePermissions } from '@/hooks/usePermissions'
+import { usePwaInstall } from '@/hooks/usePwaInstall'
 import { PERMISSIONS, type PermissionCode } from '@/lib/permissions'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -54,6 +56,7 @@ export function DashboardLayout() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const { data: adminStatus } = useAdminSession()
   const { can, loading: permsLoading } = usePermissions()
+  const { canInstall, install } = usePwaInstall()
   const isAdminUser = !!adminStatus?.is_admin_user
 
   // Enquanto o plano não chega, deixa o item visível — melhor que
@@ -78,6 +81,8 @@ export function DashboardLayout() {
           onSignOut={handleSignOut}
           email={user?.email ?? null}
           isAdmin={isAdminUser}
+          canInstall={canInstall}
+          onInstall={install}
         />
       </aside>
 
@@ -122,6 +127,8 @@ export function DashboardLayout() {
               onSignOut={handleSignOut}
               email={user?.email ?? null}
               isAdmin={isAdminUser}
+              canInstall={canInstall}
+              onInstall={install}
             />
           </div>
         </div>
@@ -142,9 +149,19 @@ interface SidebarContentProps {
   onSignOut: () => void
   email: string | null
   isAdmin: boolean
+  canInstall: boolean
+  onInstall: () => Promise<boolean>
 }
 
-function SidebarContent({ items, onNavigate, onSignOut, email, isAdmin }: SidebarContentProps) {
+function SidebarContent({
+  items,
+  onNavigate,
+  onSignOut,
+  email,
+  isAdmin,
+  canInstall,
+  onInstall,
+}: SidebarContentProps) {
   return (
     <>
       <div className="hidden h-14 items-center border-b px-6 font-semibold md:flex">
@@ -189,6 +206,19 @@ function SidebarContent({ items, onNavigate, onSignOut, email, isAdmin }: Sideba
         )}
       </nav>
       <div className="border-t p-3">
+        {canInstall && (
+          <Button
+            variant="outline"
+            className="mb-2 w-full justify-start"
+            onClick={() => {
+              void onInstall()
+              onNavigate()
+            }}
+          >
+            <Download className="h-4 w-4" />
+            Instalar app
+          </Button>
+        )}
         {email && (
           <div className="mb-2 truncate px-3 text-xs text-muted-foreground" title={email}>
             {email}

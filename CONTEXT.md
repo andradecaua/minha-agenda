@@ -51,6 +51,7 @@ nunca é a última linha de defesa.
 | Server state      | TanStack Query v5                                    |
 | Forms + validação | react-hook-form + zod                                |
 | Backend           | Supabase (Postgres + Auth + Storage + Edge Fns)      |
+| PWA               | vite-plugin-pwa (Workbox) — precache do shell        |
 
 **Chaves Supabase:** apenas `anon` no frontend. `service_role` nunca sai
 do servidor / Edge Functions.
@@ -597,6 +598,37 @@ testada manualmente e com CONTEXT.md atualizado.
 - Mensagens de erro em português, orientadas ao usuário final —
   **nunca** vazar texto do Postgres.
 - Commit messages em português, imperativo ("adiciona", "corrige").
+- **Toda release bumpa `package.json#version`.** O SW do PWA usa os
+  hashes do build pra precache; sem bump, a `__APP_VERSION__` injetada
+  continua a mesma e fica difícil distinguir qual revision tá rodando
+  no cliente. Bumpar PATCH pra bugfix/feature pequena, MINOR pra feature
+  nova, MAJOR pra breaking.
+
+---
+
+## 8.1 PWA (Progressive Web App)
+
+Instalável no mobile e desktop desde a 0.2.0. Setup:
+
+- **Plugin:** `vite-plugin-pwa` com `registerType: 'autoUpdate'`.
+- **Escopo do cache:** só o **shell** (HTML + JS + CSS + fontes +
+  ícones). Dados do Supabase **nunca** entram no SW — sempre vêm da
+  rede. Mostrar `services`/`appointments` stale podia fazer o
+  profissional "ver livre" um slot já reservado.
+- **Ícones:** `public/icon.svg` é o mestre. Rodar `npm run pwa-assets`
+  pra regenerar PNGs (192/512/maskable/apple-touch) + favicon.ico. Os
+  gerados são comitados em `public/`.
+- **Instalação:** `useInstallPrompt` captura `beforeinstallprompt` e
+  expõe `canInstall` + `install()`. Botão "Instalar app" aparece na
+  sidebar do dashboard só quando o browser suporta o prompt e o app
+  **não** está rodando em standalone. iOS Safari não suporta esse
+  evento — a instalação lá é manual (Compartilhar → Adicionar à Tela
+  de Início) e o botão simplesmente não aparece.
+- **Auto-update:** novo build → SW baixa os assets novos → ativa
+  atomicamente. Como só precacheamos o shell, aplicar update sem
+  pedir confirmação é seguro.
+- **`__APP_VERSION__`:** injetada em build-time via `define` do Vite
+  a partir do `package.json`. Disponível em qualquer `.ts/.tsx`.
 
 ---
 
@@ -634,6 +666,65 @@ Se faltar atualização, considere a entrega incompleta.
 ---
 
 ## Changelog
+
+- **2026-10-07** — **PWA instalável (v0.2.0).**
+
+  App agora é um PWA instalável no Android/Desktop (via Chrome/Edge/
+  Samsung Internet) e no iOS via "Adicionar à Tela de Início".
+
+  **Setup:**
+  - `vite-plugin-pwa` com `registerType: 'autoUpdate'` + Workbox.
+  - Precache do shell (`globPatterns: '**/*.{js,css,html,ico,png,svg,
+    woff2}'`). **Nada de dados do Supabase** vai pro SW — ver seção
+    8.1 do CONTEXT pra justificativa.
+  - Fontes do Google via `CacheFirst` com TTL de 1 ano.
+  - `navigateFallback: '/index.html'` pra SPA abrir deep-links offline.
+  - `navigateFallbackDenylist` protege `/api/`, `/auth/`, `/functions/`.
+
+  **Assets:**
+  - `public/icon.svg` — mestre (calendar + check, bg `#0f172a`).
+  - `public/favicon.svg` + `.ico`, `pwa-{64,192,512}.png`,
+    `maskable-icon-512x512.png`, `apple-touch-icon-180x180.png` —
+    todos gerados por `@vite-pwa/assets-generator` via
+    `pwa-assets.config.ts`. Comando: `npm run pwa-assets`.
+
+  **Instalação na UI:**
+  - `src/hooks/usePwaInstall.ts` — hook sobre `beforeinstallprompt` +
+    `appinstalled` + `display-mode: standalone`. Expõe `canInstall`,
+    `install()`, `isStandalone`.
+  - `DashboardLayout` — botão "Instalar app" na sidebar (desktop e
+    drawer mobile), aparece só quando `canInstall` é `true`. iOS
+    Safari não dispara o evento → botão não aparece lá.
+
+  **index.html:**
+  - `theme-color: #0f172a` (barra do browser e splash do Android).
+  - `apple-mobile-web-app-capable`, `-status-bar-style`, `-title` pro
+    iOS entrar em modo standalone com splash branco.
+  - Links de ícone/favicon ajustados pra apontar pros gerados.
+
+  **Build-time:**
+  - `__APP_VERSION__` injetada via `define` do Vite, lida do
+    `package.json`. Tipada em `src/vite-env.d.ts`.
+  - **Regra de release:** sempre bumpar `package.json#version` antes
+    de buildar/deployar — ver seção 8 de convenções.
+
+  **Trade-offs assumidos:**
+  - **Sem offline de dados.** Alvo: SaaS multi-tenant auth-gated;
+    mostrar agenda stale podia fazer o profissional "ver livre" um
+    slot já reservado. Dá pra adicionar depois, por área, se virar
+    necessidade.
+  - **Sem notificações push.** Push exige infra extra (FCM ou servidor
+    próprio Web Push) + fluxo de permissão. Fica fora do v0.2.0.
+  - **Install prompt é oportunista.** Chrome só dispara
+    `beforeinstallprompt` depois de uns critérios de engajamento
+    (visita + alguns segundos). Botão pode demorar a aparecer em
+    sessões novas — é esperado.
+
+  **Setup pós-deploy:**
+  Nenhum. O deploy do Firebase (que já tinha `Cache-Control: no-cache`
+  no `index.html` e `max-age=31536000, immutable` nos assets) já
+  interage bem com o SW: index.html sempre fresh → aponta pros
+  bundles hashados mais novos → SW baixa só o que mudou.
 
 - **2026-10-07** — **Ícones e fotos personalizadas em serviços/produtos
   (migration 0026).**
