@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -7,6 +7,7 @@ import { usePublicPlans } from '@/hooks/queries/usePublicPlans'
 import {
   CHECKOUT_ERROR_LABEL,
   createCheckoutForPlan,
+  type CheckoutInterval,
 } from '@/services/checkout'
 
 /**
@@ -27,12 +28,17 @@ import {
  */
 export function CheckoutRedirectPage() {
   const { planCode } = useParams<{ planCode: string }>()
+  const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const { data: plans, isLoading: plansLoading } = usePublicPlans()
   const [error, setError] = useState<string | null>(null)
   const started = useRef(false)
 
   const plan = plans?.find((p) => p.code === planCode)
+  // `?interval=yearly` liga o fluxo anual. Qualquer outro valor
+  // (ou ausência) cai pro mensal.
+  const interval: CheckoutInterval =
+    searchParams.get('interval') === 'yearly' ? 'yearly' : 'monthly'
 
   useEffect(() => {
     if (plansLoading || started.current) return
@@ -50,7 +56,7 @@ export function CheckoutRedirectPage() {
     }
 
     started.current = true
-    createCheckoutForPlan(plan.id)
+    createCheckoutForPlan(plan.id, interval)
       .then(({ init_point }) => {
         window.location.href = init_point
       })
@@ -59,7 +65,7 @@ export function CheckoutRedirectPage() {
         setError(CHECKOUT_ERROR_LABEL[code] ?? 'Não foi possível abrir o checkout.')
         started.current = false
       })
-  }, [plan, plans, plansLoading, navigate])
+  }, [plan, plans, plansLoading, interval, navigate])
 
   if (error) {
     return (

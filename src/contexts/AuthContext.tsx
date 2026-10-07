@@ -42,6 +42,10 @@ export interface AuthContextValue {
   ) => Promise<SignUpResult>
   signOut: () => Promise<void>
   sendPasswordReset: (email: string) => Promise<void>
+  /** Troca a senha da sessão atual. Usado tanto pelo fluxo de
+   *  "esqueci a senha" (quando a sessão é de recovery) quanto por
+   *  um usuário logado alterando a própria senha. */
+  updatePassword: (newPassword: string) => Promise<void>
   resendSignupEmail: (email: string) => Promise<void>
   refreshAal: () => Promise<void>
 }
@@ -136,9 +140,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
         if (error) throw error
       },
       async sendPasswordReset(email) {
+        // `/reset-password` fica FORA do GuestOnlyRoute pra que a
+        // sessão de recovery (criada automaticamente pelo SDK quando
+        // o browser abre o link do email) não dispare redirect pro
+        // dashboard antes do user conseguir setar a nova senha.
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: `${window.location.origin}/login`,
+          redirectTo: `${window.location.origin}/reset-password`,
         })
+        if (error) throw error
+      },
+      async updatePassword(newPassword) {
+        const { error } = await supabase.auth.updateUser({ password: newPassword })
         if (error) throw error
       },
       async resendSignupEmail(email) {

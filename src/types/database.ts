@@ -49,6 +49,12 @@ export interface Service {
   description: string | null
   price_cents: number
   duration_minutes: number
+  /** Nome do ícone (lucide-react) escolhido no form — ver `src/lib/icons.ts`. */
+  icon: string | null
+  /** URL pública da foto. NULL = sem foto. Upload exige permissão `custom_images`. */
+  image_url: string | null
+  /** Caminho interno no bucket `services`. Usado pra limpar blob ao trocar/remover. */
+  image_storage_path: string | null
   active: boolean
   created_at: string
   updated_at: string
@@ -111,6 +117,8 @@ export interface Product {
   stock: number
   sku: string | null
   image_url: string | null
+  /** Nome do ícone (lucide-react) escolhido no form — ver `src/lib/icons.ts`. */
+  icon: string | null
   active: boolean
   created_at: string
   updated_at: string

@@ -34,8 +34,8 @@ Deno.serve(async (req) => {
     const user = userData.user
     console.log('[create-subscription] user=', user.id)
 
-    // --- 2. Body: plan_id --------------------------------------
-    let body: { plan_id?: string }
+    // --- 2. Body: plan_id + interval opcional ------------------
+    let body: { plan_id?: string; interval?: string }
     try {
       body = await req.json()
     } catch {
@@ -44,11 +44,16 @@ Deno.serve(async (req) => {
     const planId = body.plan_id
     if (!planId) return errorResponse('plan_id_required')
 
+    const interval: 'monthly' | 'yearly' =
+      body.interval === 'yearly' ? 'yearly' : 'monthly'
+
     // --- 3. Busca plano (service_role bypassa RLS) -------------
     const db = serviceClient()
     const { data: plan, error: planErr } = await db
       .from('plans')
-      .select('id, code, name, description, price_cents, active')
+      .select(
+        'id, code, name, description, price_cents, price_yearly_cents, active',
+      )
       .eq('id', planId)
       .maybeSingle()
     if (planErr) {
@@ -58,6 +63,18 @@ Deno.serve(async (req) => {
     if (!plan) return errorResponse('plan_not_found', 404)
     if (!plan.active) return errorResponse('plan_inactive', 400)
     if (plan.price_cents <= 0) return errorResponse('plan_is_free', 400)
+
+    // Decide valor cobrado conforme o intervalo. 'yearly' só é
+    // válido se o plano tem price_yearly_cents setado.
+    let amountCents: number
+    if (interval === 'yearly') {
+      if (!plan.price_yearly_cents || plan.price_yearly_cents <= 0) {
+        return errorResponse('yearly_not_offered', 400)
+      }
+      amountCents = plan.price_yearly_cents
+    } else {
+      amountCents = plan.price_cents
+    }
 
     if (!Deno.env.get('MP_ACCESS_TOKEN')) {
       console.error('[create-subscription] MP_ACCESS_TOKEN não configurado')
@@ -73,18 +90,24 @@ Deno.serve(async (req) => {
       : undefined
     try {
       const preference = await createPreference({
-        title: `${plan.name} — Minha Agenda`,
+        title: `${plan.name} ${interval === 'yearly' ? '(anual)' : ''} — Minha Agenda`.trim(),
         description: plan.description ?? undefined,
-        amountCents: plan.price_cents,
-        // Guardamos user_id E plan_id separados por `:` pra o webhook
-        // conseguir mapear sem outro round-trip ao DB.
-        externalReference: `${user.id}:${plan.id}`,
+        amountCents,
+        // user_id:plan_id:interval — webhook recupera os três sem
+        // round-trip ao DB. `interval` é o 3º segmento, opcional em
+        // webhooks de compras antigas (fallback 'monthly').
+        externalReference: `${user.id}:${plan.id}:${interval}`,
         backUrlBase: `${siteUrl}/dashboard`,
         notificationUrl,
         payerEmail: user.email ?? undefined,
       })
 
-      console.log('[create-subscription] preference_id=', preference.id)
+      console.log(
+        '[create-subscription] preference_id=',
+        preference.id,
+        'interval=',
+        interval,
+      )
       return jsonResponse({
         status: 'ok',
         init_point: preference.init_point,

@@ -16,6 +16,8 @@ export const PERMISSIONS = {
   PUBLIC_PAGE_ENABLED: 'public_page.enabled',
   BOOKING_CANCELLATION_RULES: 'booking.cancellation_rules',
   REPORTS_ADVANCED: 'reports.advanced',
+  /** Fotos personalizadas em serviços e produtos (0026). Ícones são livres pra todos. */
+  CUSTOM_IMAGES: 'custom_images',
 } as const
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS]

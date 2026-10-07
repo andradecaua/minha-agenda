@@ -167,6 +167,8 @@ export interface CreatePlanInput {
   name: string
   description?: string | null
   price_cents: number
+  /** Opcional. `null` ou ausente = plano não oferece opção anual. */
+  price_yearly_cents?: number | null
   billing_interval: BillingInterval
   features?: string[]
   /** Códigos canônicos do catálogo (ver `src/lib/permissions.ts`). */
@@ -188,6 +190,7 @@ export async function createPlan(input: CreatePlanInput): Promise<string> {
     p_max_appointments_per_month: input.max_appointments_per_month ?? null,
     p_active: input.active ?? true,
     p_permissions: input.permissions ?? [],
+    p_price_yearly_cents: input.price_yearly_cents ?? null,
   })
   if (error) throw error
   const result = parseResult<{ plan_id: string }>(data)
@@ -200,6 +203,12 @@ export interface UpdatePlanInput {
   name?: string
   description?: string | null
   price_cents?: number
+  /**
+   * `undefined` = não altera. `number` = seta/atualiza. `null` =
+   * desliga a opção anual (traduzido pro sentinel -1 que a RPC
+   * reconhece como "clear").
+   */
+  price_yearly_cents?: number | null
   billing_interval?: BillingInterval
   features?: string[]
   /** `undefined` = não altera. Passe `[]` para esvaziar. */
@@ -210,6 +219,15 @@ export interface UpdatePlanInput {
 }
 
 export async function updatePlan(input: UpdatePlanInput): Promise<void> {
+  // Sentinel pra limpar (ver 0025): -1 vira NULL no SQL; number real
+  // vira o novo preço; undefined vira NULL "não altera".
+  const yearly =
+    input.price_yearly_cents === undefined
+      ? null
+      : input.price_yearly_cents === null
+        ? -1
+        : input.price_yearly_cents
+
   const { data, error } = await supabase.rpc('admin_update_plan', {
     p_plan_id: input.plan_id,
     p_name: input.name ?? null,
@@ -221,6 +239,7 @@ export async function updatePlan(input: UpdatePlanInput): Promise<void> {
     p_max_appointments_per_month: input.max_appointments_per_month ?? null,
     p_active: input.active ?? null,
     p_permissions: input.permissions ?? null,
+    p_price_yearly_cents: yearly,
   })
   if (error) throw error
   const result = parseResult<unknown>(data)

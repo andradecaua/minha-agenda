@@ -18,13 +18,16 @@ export interface CreateCheckoutResult {
   preference_id: string
 }
 
+export type CheckoutInterval = 'monthly' | 'yearly'
+
 export async function createCheckoutForPlan(
   planId: string,
+  interval: CheckoutInterval = 'monthly',
 ): Promise<CreateCheckoutResult> {
   const { data, error } = await supabase.functions.invoke<
     { status: 'ok'; init_point: string; preference_id: string }
     | { status: 'error'; error: string }
-  >('create-subscription', { body: { plan_id: planId } })
+  >('create-subscription', { body: { plan_id: planId, interval } })
 
   if (error) throw error
   if (!data) throw new Error('invalid_response')
@@ -45,4 +48,37 @@ export const CHECKOUT_ERROR_LABEL: Record<string, string> = {
   db_error: 'Erro interno. Tente de novo.',
   invalid_body: 'Requisição inválida.',
   plan_id_required: 'Plano não informado.',
+  yearly_not_offered:
+    'Este plano não oferece opção anual. Escolha mensal ou outro plano.',
+}
+
+/**
+ * Cancela a assinatura do usuário logado (modelo Preference — 0023 e
+ * 0024). Idempotente: re-chamar quando já está cancelada é no-op OK.
+ *
+ * O backend só marca `cancel_at_period_end=true`; o acesso ao plano
+ * segue válido até `current_period_end`, depois o `has_feature()`
+ * rebaixa pro free automaticamente. Nenhuma chamada ao MP é feita —
+ * no modelo Preference eles já cobraram uma única vez.
+ */
+export interface CancelResult {
+  current_period_end: string | null
+}
+
+export async function cancelMySubscription(): Promise<CancelResult> {
+  const { data, error } = await supabase.rpc('cancel_my_subscription')
+
+  if (error) throw new Error(error.message)
+  if (!data || typeof data !== 'object') throw new Error('invalid_response')
+
+  const payload = data as { status: string; error?: string; current_period_end?: string }
+  if (payload.status !== 'ok') {
+    throw new Error(payload.error ?? 'unknown_error')
+  }
+  return { current_period_end: payload.current_period_end ?? null }
+}
+
+export const CANCEL_ERROR_LABEL: Record<string, string> = {
+  unauthorized: 'Sessão expirada. Faça login novamente.',
+  nothing_to_cancel: 'Você não tem uma assinatura paga ativa.',
 }

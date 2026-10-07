@@ -42,6 +42,7 @@
 
 import { getPayment, verifyWebhookSignature } from '../_shared/mercadopago.ts'
 import { serviceClient } from '../_shared/supabase.ts'
+import { sendEmail } from '../_shared/email.ts'
 
 function ok(body = 'ok'): Response {
   return new Response(body, { status: 200 })
@@ -180,6 +181,27 @@ Deno.serve(async (req) => {
       '[webhook] HMAC inválido mas duplo-check (API + user) ok — aceito via fallback',
       { paymentId: resourceId, userId: maybeUserId },
     )
+    // Alerta operacional. Pode indicar MP_WEBHOOK_SECRET rotacionado
+    // sem reconfigurar aqui, ou mudança de formato de manifesto do
+    // MP, ou crédito de teste com HMAC inconsistente. Em qualquer
+    // caso, vale olhar. Fire-and-forget pra não travar a resposta
+    // do webhook (que precisa ser rápida pra o MP não reenviar).
+    const alertTo = Deno.env.get('ALERT_EMAIL_TO')
+    if (alertTo) {
+      // deno-lint-ignore no-floating-promises
+      sendEmail({
+        to: alertTo,
+        subject: '[Minha Agenda] HMAC fallback do webhook do MP disparou',
+        html: renderHmacAlert({
+          paymentId: resourceId,
+          userId: maybeUserId,
+          requestId: xRequestId,
+          firedAt: new Date().toISOString(),
+        }),
+      }).catch((err) => {
+        console.error('[webhook] falha ao enviar alerta HMAC fallback:', err)
+      })
+    }
   }
 
   try {
@@ -213,7 +235,14 @@ async function handlePayment(
 ) {
   // Reusa o payment já buscado no fallback de assinatura.
   const payment = prefetched ?? (await getPayment(paymentId))
-  const [userId, planId] = (payment.external_reference ?? '').split(':')
+  // external_reference: `user_id:plan_id[:interval]`. O 3º segmento
+  // é opcional pra compat com webhooks de compras antigas (feitas
+  // antes da 0025) — fallback 'monthly' nesses casos.
+  const refParts = (payment.external_reference ?? '').split(':')
+  const userId = refParts[0] ?? ''
+  const planId = refParts[1] ?? ''
+  const interval: 'monthly' | 'yearly' =
+    refParts[2] === 'yearly' ? 'yearly' : 'monthly'
 
   console.log(
     '[webhook] payment',
@@ -226,7 +255,11 @@ async function handlePayment(
     payment.external_reference,
   )
 
-  await db.rpc('record_payment_event', {
+  // `record_payment_event` devolve `true` só na primeira vez que
+  // esse evento é registrado — a UNIQUE (gateway, gateway_event_id)
+  // + ON CONFLICT DO NOTHING garante idempotência. Usamos esse flag
+  // pra evitar reenviar o email de agradecimento em replays do MP.
+  const { data: isNewEvent, error: recordErr } = await db.rpc('record_payment_event', {
     p_user_id: userId || null,
     p_plan_id: planId || null,
     p_gateway: 'mercadopago',
@@ -237,9 +270,12 @@ async function handlePayment(
     p_amount_cents: Math.round(payment.transaction_amount * 100),
     p_raw: rawPayload as Record<string, unknown>,
   })
+  if (recordErr) {
+    console.error('[webhook] record_payment_event erro:', recordErr)
+  }
 
   if (payment.status === 'approved' && userId && planId) {
-    const periodEnd = addMonthIso(payment.date_approved ?? null)
+    const periodEnd = addPeriodIso(payment.date_approved ?? null, interval)
     const { error } = await db.rpc('activate_subscription_from_webhook', {
       p_user_id: userId,
       p_plan_id: planId,
@@ -248,17 +284,265 @@ async function handlePayment(
       p_current_period_end: periodEnd,
       p_last_payment_at:
         payment.date_approved ?? new Date().toISOString(),
+      p_interval: interval,
     })
     if (error) {
       console.error('[webhook] activate_subscription erro:', error)
       throw new Error(`activate_failed: ${error.message}`)
     }
-    console.log('[webhook] subscription ativada até', periodEnd)
+    console.log('[webhook] subscription ativada até', periodEnd, 'interval=', interval)
+
+    // Email de agradecimento. Fire-and-forget pra não atrasar o 200
+    // ao MP (que precisa ser rápido pra não reagendar). Só manda em
+    // evento NOVO — webhook replay pelo MP não dispara email duplicado.
+    if (isNewEvent) {
+      // deno-lint-ignore no-floating-promises
+      sendPurchaseThankYouEmail(db, {
+        userId,
+        planId,
+        paymentId,
+        amountCents: Math.round(payment.transaction_amount * 100),
+        periodEnd,
+      }).catch((err) => {
+        console.error('[webhook] falha ao enviar email de agradecimento:', err)
+      })
+    } else {
+      console.log('[webhook] evento replay — email de agradecimento pulado')
+    }
   }
 }
 
-function addMonthIso(baseIso: string | null): string {
+function addPeriodIso(
+  baseIso: string | null,
+  interval: 'monthly' | 'yearly',
+): string {
   const d = baseIso ? new Date(baseIso) : new Date()
-  d.setMonth(d.getMonth() + 1)
+  if (interval === 'yearly') {
+    d.setFullYear(d.getFullYear() + 1)
+  } else {
+    d.setMonth(d.getMonth() + 1)
+  }
   return d.toISOString()
+}
+
+// =============================================================
+// Email de agradecimento pela compra
+// -------------------------------------------------------------
+// Disparado uma vez por evento NOVO de payment.approved. Busca
+// email do user via auth.admin e nome do plano. Qualquer erro é
+// logado — não re-throw, pra não interferir no retorno do webhook.
+// =============================================================
+async function sendPurchaseThankYouEmail(
+  db: ReturnType<typeof serviceClient>,
+  params: {
+    userId: string
+    planId: string
+    paymentId: string
+    amountCents: number
+    periodEnd: string
+  },
+): Promise<void> {
+  const { data: userData, error: userErr } = await db.auth.admin.getUserById(
+    params.userId,
+  )
+  if (userErr || !userData?.user?.email) {
+    console.warn('[webhook] thank-you: user sem email', {
+      userId: params.userId,
+      err: userErr,
+    })
+    return
+  }
+
+  const { data: plan, error: planErr } = await db
+    .from('plans')
+    .select('name')
+    .eq('id', params.planId)
+    .maybeSingle()
+  if (planErr || !plan) {
+    console.warn('[webhook] thank-you: plano não encontrado', {
+      planId: params.planId,
+      err: planErr,
+    })
+    return
+  }
+
+  const siteUrl = Deno.env.get('SITE_URL') ?? ''
+  const manageUrl = `${siteUrl}/dashboard/configuracoes/assinatura`
+
+  await sendEmail({
+    to: userData.user.email,
+    subject: `Pagamento confirmado · ${plan.name} · Minha Agenda`,
+    html: renderThankYouEmail({
+      planName: plan.name,
+      amountCents: params.amountCents,
+      periodEnd: params.periodEnd,
+      paymentId: params.paymentId,
+      manageUrl,
+    }),
+  })
+
+  console.log('[webhook] email de agradecimento enviado', {
+    userId: params.userId,
+    paymentId: params.paymentId,
+  })
+}
+
+function renderThankYouEmail(params: {
+  planName: string
+  amountCents: number
+  periodEnd: string
+  paymentId: string
+  manageUrl: string
+}): string {
+  const d = new Date(params.periodEnd)
+  const dateBR = Number.isNaN(d.getTime())
+    ? params.periodEnd
+    : new Intl.DateTimeFormat('pt-BR', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric',
+      }).format(d)
+  const amountBR = new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  }).format(params.amountCents / 100)
+
+  // HTML inline-styled, mesma linguagem visual dos outros templates
+  // (confirm-signup, send-renewal-reminders).
+  return `<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<title>Pagamento confirmado · Minha Agenda</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f5f6f8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#0b1220">
+  <div style="display:none;max-height:0;overflow:hidden;mso-hide:all">
+    Seu plano ${escapeHtml(params.planName)} está ativo até ${escapeHtml(dateBR)}.
+  </div>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f5f6f8;padding:32px 16px">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:520px;background-color:#ffffff;border-radius:12px;border:1px solid #e5e7eb;overflow:hidden">
+        <tr><td style="padding:28px 32px 0 32px">
+          <div style="font-size:14px;font-weight:600;letter-spacing:-0.01em;color:#111827">Minha Agenda</div>
+        </td></tr>
+
+        <tr><td style="padding:20px 32px 8px 32px">
+          <h1 style="margin:0;font-size:22px;line-height:1.3;font-weight:600;color:#0b1220;letter-spacing:-0.01em">
+            Pagamento confirmado 🎉
+          </h1>
+        </td></tr>
+
+        <tr><td style="padding:12px 32px 0 32px">
+          <p style="margin:0 0 16px 0;font-size:15px;line-height:1.6;color:#374151">
+            Obrigado por assinar a <strong>Minha Agenda</strong>! Seu pagamento foi
+            processado e seu plano já está ativo.
+          </p>
+        </td></tr>
+
+        <!-- Resumo da compra -->
+        <tr><td style="padding:4px 32px 20px 32px">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f9fafb;border:1px solid #e5e7eb;border-radius:10px">
+            <tr>
+              <td style="padding:12px 16px;font-size:13px;color:#6b7280;width:40%">Plano</td>
+              <td style="padding:12px 16px;font-size:14px;color:#0b1220;font-weight:600">${escapeHtml(params.planName)}</td>
+            </tr>
+            <tr>
+              <td style="padding:12px 16px;font-size:13px;color:#6b7280;border-top:1px solid #e5e7eb">Valor pago</td>
+              <td style="padding:12px 16px;font-size:14px;color:#0b1220;font-weight:600;border-top:1px solid #e5e7eb">${escapeHtml(amountBR)}</td>
+            </tr>
+            <tr>
+              <td style="padding:12px 16px;font-size:13px;color:#6b7280;border-top:1px solid #e5e7eb">Acesso até</td>
+              <td style="padding:12px 16px;font-size:14px;color:#0b1220;font-weight:600;border-top:1px solid #e5e7eb">${escapeHtml(dateBR)}</td>
+            </tr>
+          </table>
+        </td></tr>
+
+        <!-- CTA -->
+        <tr><td style="padding:0 32px 24px 32px">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+            <tr><td align="center">
+              <a href="${escapeHtml(params.manageUrl)}" target="_blank"
+                 style="display:inline-block;background-color:#0b1220;color:#ffffff;text-decoration:none;font-size:15px;font-weight:600;padding:12px 24px;border-radius:8px;letter-spacing:-0.01em">
+                Ir para o painel
+              </a>
+            </td></tr>
+          </table>
+        </td></tr>
+
+        <!-- Nota sobre renovação -->
+        <tr><td style="padding:0 32px 24px 32px">
+          <p style="margin:0;font-size:13px;line-height:1.6;color:#6b7280">
+            A renovação é manual: você paga de novo quando o período acabar.
+            Enviaremos um lembrete por email alguns dias antes do vencimento.
+          </p>
+        </td></tr>
+
+        <!-- Divisor -->
+        <tr><td style="padding:0 32px"><div style="height:1px;background-color:#e5e7eb"></div></td></tr>
+
+        <!-- Rodapé -->
+        <tr><td style="padding:20px 32px 28px 32px">
+          <p style="margin:0;font-size:12px;line-height:1.6;color:#6b7280">
+            Precisa de recibo ou nota? Responda este email. Guarde-o como
+            comprovante — número da transação:
+            <code style="font-family:ui-monospace,Menlo,Consolas,monospace;color:#374151">${escapeHtml(params.paymentId)}</code>.
+          </p>
+        </td></tr>
+      </table>
+
+      <p style="margin:16px 0 0 0;font-size:12px;color:#9ca3af">
+        Minha Agenda · agendamento online pra profissionais autônomos.
+      </p>
+    </td></tr>
+  </table>
+</body>
+</html>`
+}
+
+// =============================================================
+// Email de alerta — HMAC fallback aceito
+// -------------------------------------------------------------
+// HTML minimalista. O destinatário é o operador (não cliente), então
+// não precisamos de design — precisamos dos campos pra investigar.
+// =============================================================
+function renderHmacAlert(params: {
+  paymentId: string
+  userId: string
+  requestId: string | null
+  firedAt: string
+}): string {
+  return `<!doctype html>
+<html lang="pt-BR">
+<body style="font-family:ui-monospace,Menlo,Consolas,monospace;color:#111;background:#fff;padding:24px">
+  <h2 style="margin:0 0 12px;font-size:16px">⚠️ HMAC fallback do webhook do MP disparou</h2>
+  <p style="margin:0 0 16px;font-size:13px;line-height:1.5">
+    A assinatura HMAC do payload falhou, mas o duplo-check (API do MP +
+    user_id no nosso DB) passou — o webhook foi aceito via fallback. Vale
+    conferir se o <code>MP_WEBHOOK_SECRET</code> está atualizado nos
+    secrets do Supabase vs. o painel do MP.
+  </p>
+  <table cellpadding="4" style="font-size:12px;border-collapse:collapse">
+    <tr><td style="color:#666">payment_id</td><td><code>${escapeHtml(params.paymentId)}</code></td></tr>
+    <tr><td style="color:#666">user_id</td><td><code>${escapeHtml(params.userId)}</code></td></tr>
+    <tr><td style="color:#666">x-request-id</td><td><code>${escapeHtml(params.requestId ?? '(nulo)')}</code></td></tr>
+    <tr><td style="color:#666">fired_at (UTC)</td><td><code>${escapeHtml(params.firedAt)}</code></td></tr>
+  </table>
+  <p style="margin:16px 0 0;font-size:12px;color:#666;line-height:1.5">
+    Pra investigar: Supabase → Edge Functions → mercadopago-webhook → Logs,
+    filtre por <code>${escapeHtml(params.paymentId)}</code>.
+  </p>
+</body>
+</html>`
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
 }

@@ -13,8 +13,19 @@ export interface MyPlan {
   permissions: PermissionCode[]
   max_services: number | null
   max_appointments_per_month: number | null
+  /** Preço mensal do plano em centavos. Útil pro frontend decidir
+   *  entre toggle mensal/anual sem round-trip extra. */
+  plan_price_cents: number | null
+  /** Preço anual do plano em centavos. `null` = plano não oferece anual. */
+  plan_price_yearly_cents: number | null
   subscription_status: 'active' | 'past_due' | 'cancelled' | 'trialing' | null
   expires_at: string | null
+  /** `true` depois que o usuário clicou "Cancelar assinatura" — segue
+   *  ativo até `expires_at`, mas não vai renovar automaticamente nem
+   *  receber lembrete de renovação por email. */
+  cancel_at_period_end: boolean | null
+  /** Qual intervalo o usuário escolheu na compra atual. */
+  current_interval: 'monthly' | 'yearly' | null
 }
 
 /**

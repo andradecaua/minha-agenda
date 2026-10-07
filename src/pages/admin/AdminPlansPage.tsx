@@ -122,6 +122,13 @@ export function AdminPlansPage() {
                   <div className="text-xs text-muted-foreground">
                     por {translateInterval(p.billing_interval)}
                   </div>
+                  {p.price_yearly_cents != null && (
+                    <div className="mt-1.5 flex items-center gap-1.5">
+                      <span className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
+                        + anual {formatCurrencyBRL(p.price_yearly_cents)}
+                      </span>
+                    </div>
+                  )}
                 </div>
                 {p.description && (
                   <p className="text-sm text-muted-foreground">{p.description}</p>
@@ -211,6 +218,48 @@ function translateInterval(i: string): string {
   return 'vitalício'
 }
 
+/**
+ * Mostra o desconto percentual do anual vs 12x o mensal. Verde
+ * quando positivo, âmbar quando o anual sai mais CARO (ou igual)
+ * — sinal de que admin provavelmente digitou errado.
+ */
+function YearlyDiscountPreview({
+  priceCentsMonthly,
+  priceCentsYearly,
+}: {
+  priceCentsMonthly: number
+  priceCentsYearly: number
+}) {
+  if (priceCentsMonthly <= 0 || priceCentsYearly <= 0) {
+    return (
+      <div className="h-10 rounded-md border border-dashed border-input bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+        Defina os dois preços
+      </div>
+    )
+  }
+  const yearIfMonthly = priceCentsMonthly * 12
+  const discountPct = (yearIfMonthly - priceCentsYearly) / yearIfMonthly
+  const pct = Math.round(discountPct * 100)
+  const positive = discountPct > 0
+  return (
+    <div
+      className={
+        'flex h-10 items-center gap-2 rounded-md border px-3 text-xs ' +
+        (positive
+          ? 'border-emerald-500/30 bg-emerald-500/5 text-emerald-700'
+          : 'border-amber-500/40 bg-amber-500/5 text-amber-700')
+      }
+    >
+      <span className="text-lg font-semibold tabular-nums">
+        {positive ? `-${pct}%` : `+${Math.abs(pct)}%`}
+      </span>
+      <span className="text-[11px] opacity-80">
+        {positive ? 'vs pagar 12 × mensal' : 'anual mais caro que mensal'}
+      </span>
+    </div>
+  )
+}
+
 interface PlanFormDialogProps {
   mode: 'create' | 'edit'
   plan?: Plan
@@ -229,6 +278,8 @@ function PlanFormDialog({ mode, plan, onClose, onSaved }: PlanFormDialogProps) {
     max_services: plan?.max_services?.toString() ?? '',
     max_appointments_per_month: plan?.max_appointments_per_month?.toString() ?? '',
     active: plan?.active ?? true,
+    offerYearly: plan?.price_yearly_cents != null,
+    price_yearly_cents: plan?.price_yearly_cents ?? 0,
   })
   const [permissions, setPermissions] = useState<Set<string>>(
     () => new Set(plan?.permissions ?? []),
@@ -254,11 +305,16 @@ function PlanFormDialog({ mode, plan, onClose, onSaved }: PlanFormDialogProps) {
         .split('\n')
         .map((s) => s.trim())
         .filter(Boolean)
+      // Preço anual: ligado via toggle. Quando desligado, mandamos
+      // `null` pro service — que, em update, vira o sentinel -1 pra
+      // RPC limpar a coluna; em create, vira NULL de verdade.
+      const yearlyPrice = form.offerYearly ? form.price_yearly_cents : null
       const payload: CreatePlanInput = {
         code: form.code,
         name: form.name,
         description: form.description || null,
         price_cents: form.price_cents,
+        price_yearly_cents: yearlyPrice,
         billing_interval: form.billing_interval,
         features,
         permissions: Array.from(permissions),
@@ -333,7 +389,7 @@ function PlanFormDialog({ mode, plan, onClose, onSaved }: PlanFormDialogProps) {
         </div>
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
-            <Label htmlFor="plan-price">Preço *</Label>
+            <Label htmlFor="plan-price">Preço mensal *</Label>
             <CurrencyInput
               id="plan-price"
               valueCents={form.price_cents}
@@ -341,7 +397,7 @@ function PlanFormDialog({ mode, plan, onClose, onSaved }: PlanFormDialogProps) {
             />
           </div>
           <div className="space-y-1.5">
-            <Label htmlFor="plan-interval">Cobrança</Label>
+            <Label htmlFor="plan-interval">Cobrança principal</Label>
             <select
               id="plan-interval"
               value={form.billing_interval}
@@ -354,6 +410,50 @@ function PlanFormDialog({ mode, plan, onClose, onSaved }: PlanFormDialogProps) {
             </select>
           </div>
         </div>
+
+        {/* Preço anual opcional — habilita o toggle mensal/anual
+            na landing e no SubscriptionPage. Desconto é derivado. */}
+        {form.price_cents > 0 && (
+          <div className="space-y-3 rounded-md border border-dashed border-input p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-0.5">
+                <Label htmlFor="plan-offer-yearly" className="cursor-pointer">
+                  Oferecer plano anual
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Mostra toggle "mensal/anual" na landing com o desconto
+                  calculado automaticamente.
+                </p>
+              </div>
+              <Switch
+                id="plan-offer-yearly"
+                checked={form.offerYearly}
+                onCheckedChange={(v) => setForm({ ...form, offerYearly: v })}
+              />
+            </div>
+            {form.offerYearly && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="plan-price-yearly">Preço anual</Label>
+                  <CurrencyInput
+                    id="plan-price-yearly"
+                    valueCents={form.price_yearly_cents}
+                    onChangeCents={(cents) =>
+                      setForm({ ...form, price_yearly_cents: cents })
+                    }
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label>Desconto vs mensal</Label>
+                  <YearlyDiscountPreview
+                    priceCentsMonthly={form.price_cents}
+                    priceCentsYearly={form.price_yearly_cents}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
         <div className="space-y-1.5">
           <Label htmlFor="plan-features">Benefícios (um por linha)</Label>
           <Textarea

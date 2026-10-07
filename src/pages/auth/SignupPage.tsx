@@ -31,16 +31,24 @@ export function SignupPage() {
   // Nenhum dos dois → cai no dashboard depois.
   const locationState = location.state as { redirectTo?: string } | null
   const planCodeFromQuery = searchParams.get('plan')
+  // `?interval=yearly` chega da landing quando o toggle estava em
+  // anual. Propaga pro `/checkout/<code>?interval=yearly` reconstruído.
+  const intervalFromQuery = searchParams.get('interval')
+  const intervalSuffix =
+    intervalFromQuery === 'yearly' ? '?interval=yearly' : ''
   const redirectTo =
     locationState?.redirectTo ??
-    (planCodeFromQuery ? `/checkout/${planCodeFromQuery}` : null)
+    (planCodeFromQuery
+      ? `/checkout/${planCodeFromQuery}${intervalSuffix}`
+      : null)
 
   // Plano de intenção pra exibir no notice. Tenta extrair o code do
-  // redirectTo (/checkout/pro → "pro") ou usa o ?plan= direto.
+  // redirectTo (/checkout/pro → "pro") ou usa o ?plan= direto. Como
+  // o redirectTo pode trazer `?interval=yearly`, strip query antes.
   const checkoutPlanCode = useMemo(() => {
     if (planCodeFromQuery) return planCodeFromQuery
     if (redirectTo?.startsWith('/checkout/')) {
-      return redirectTo.slice('/checkout/'.length)
+      return redirectTo.slice('/checkout/'.length).split('?')[0] ?? null
     }
     return null
   }, [planCodeFromQuery, redirectTo])

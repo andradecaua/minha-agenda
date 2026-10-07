@@ -15,12 +15,12 @@ import {
   deleteService,
   toggleServiceActive,
   updateService,
-  type ServiceInput,
 } from '@/services/services'
 import { isQuotaError } from '@/services/permissions'
 import type { Service } from '@/types/database'
 import { formatCurrencyBRL, formatMinutesDuration } from '@/lib/utils'
-import { ServiceForm } from './ServiceForm'
+import { getIcon } from '@/lib/icons'
+import { ServiceForm, type ServiceFormResult } from './ServiceForm'
 
 export function ServicesPage() {
   const queryClient = useQueryClient()
@@ -47,9 +47,9 @@ export function ServicesPage() {
   }
 
   const createMutation = useMutation({
-    mutationFn: (input: ServiceInput) => {
+    mutationFn: ({ result }: { result: ServiceFormResult }) => {
       if (!profile) throw new Error('Perfil não carregado')
-      return createService(profile.id, input)
+      return createService(profile.id, result.input, { imageFile: result.imageFile })
     },
     onSuccess: () => {
       invalidate()
@@ -59,8 +59,11 @@ export function ServicesPage() {
   })
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, input }: { id: string; input: ServiceInput }) =>
-      updateService(id, input),
+    mutationFn: ({ current, result }: { current: Service; result: ServiceFormResult }) =>
+      updateService(current, result.input, {
+        imageFile: result.imageFile,
+        removeImage: result.removeImage,
+      }),
     onSuccess: () => {
       invalidate()
       setEditing(null)
@@ -69,8 +72,8 @@ export function ServicesPage() {
   })
 
   const toggleMutation = useMutation({
-    mutationFn: ({ id, active }: { id: string; active: boolean }) =>
-      toggleServiceActive(id, active),
+    mutationFn: ({ service, active }: { service: Service; active: boolean }) =>
+      toggleServiceActive(service, active),
     onSuccess: invalidate,
     onError: () => {
       setListError('Não foi possível atualizar o status. Tente novamente.')
@@ -78,7 +81,7 @@ export function ServicesPage() {
   })
 
   const deleteMutation = useMutation({
-    mutationFn: (id: string) => deleteService(id),
+    mutationFn: (service: Service) => deleteService(service),
     onSuccess: () => {
       invalidate()
       setDeleting(null)
@@ -98,13 +101,13 @@ export function ServicesPage() {
     },
   })
 
-  async function handleSave(input: ServiceInput) {
+  async function handleSave(result: ServiceFormResult) {
     setFormError(null)
     try {
       if (editing) {
-        await updateMutation.mutateAsync({ id: editing.id, input })
+        await updateMutation.mutateAsync({ current: editing, result })
       } else {
-        await createMutation.mutateAsync(input)
+        await createMutation.mutateAsync({ result })
       }
     } catch (err) {
       // Trigger de quota (0020) emite SQLSTATE P0100.
@@ -187,11 +190,12 @@ export function ServicesPage() {
                 setEditing(svc)
               }}
               onToggle={(active) =>
-                toggleMutation.mutate({ id: svc.id, active })
+                toggleMutation.mutate({ service: svc, active })
               }
               onDelete={() => setDeleting(svc)}
               toggling={
-                toggleMutation.isPending && toggleMutation.variables?.id === svc.id
+                toggleMutation.isPending &&
+                toggleMutation.variables?.service.id === svc.id
               }
             />
           ))}
@@ -233,7 +237,7 @@ export function ServicesPage() {
         open={!!deleting}
         onClose={() => setDeleting(null)}
         onConfirm={() => {
-          if (deleting) deleteMutation.mutate(deleting.id)
+          if (deleting) deleteMutation.mutate(deleting)
         }}
         title="Excluir serviço?"
         description={
@@ -262,9 +266,7 @@ function ServiceRow({ service, onEdit, onToggle, onDelete, toggling }: ServiceRo
     <Card>
       <CardContent className="flex flex-wrap items-center gap-4 py-4">
         <div className="flex flex-1 items-center gap-3 min-w-0">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-muted">
-            <Scissors className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-          </div>
+          <ServiceThumb service={service} />
           <div className="min-w-0 flex-1">
             <p className="truncate font-medium">{service.name}</p>
             <p className="text-sm text-muted-foreground">
@@ -301,6 +303,32 @@ function ServiceRow({ service, onEdit, onToggle, onDelete, toggling }: ServiceRo
         </div>
       </CardContent>
     </Card>
+  )
+}
+
+/**
+ * Precedência da thumb: foto personalizada > ícone escolhido > ícone
+ * default (Scissors). Mesma hierarquia é usada na página pública.
+ */
+function ServiceThumb({ service }: { service: Service }) {
+  if (service.image_url) {
+    return (
+      <div className="h-10 w-10 shrink-0 overflow-hidden rounded-md bg-muted">
+        <img
+          src={service.image_url}
+          alt=""
+          className="h-full w-full object-cover"
+          loading="lazy"
+        />
+      </div>
+    )
+  }
+
+  const Icon = getIcon(service.icon) ?? Scissors
+  return (
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-muted">
+      <Icon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+    </div>
   )
 }
 

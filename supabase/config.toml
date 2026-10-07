@@ -2,7 +2,7 @@
 #
 # `verify_jwt = false` desabilita a validação de JWT feita pelo gateway
 # do Supabase (que roda ANTES do nosso código). Precisamos disso em
-# ambas as functions:
+# todas as functions:
 #
 #   - create-subscription: a validação do caller é feita DENTRO da
 #     função (via auth.getUser). Sem a flag, o preflight OPTIONS do
@@ -12,6 +12,10 @@
 #   - mercadopago-webhook: endpoint público. Segurança via assinatura
 #     HMAC x-signature (ver _shared/mercadopago.ts).
 #
+#   - send-renewal-reminders: invocada pelo pg_cron via pg_net.
+#     Não vem JWT. Segurança via header `x-cron-secret` conferido
+#     contra o secret `CRON_SECRET`.
+#
 # A autenticação continua forte: o service_role só é usado dentro das
 # functions, nunca exposto ao caller.
 
@@ -19,4 +23,7 @@
 verify_jwt = false
 
 [functions.mercadopago-webhook]
+verify_jwt = false
+
+[functions.send-renewal-reminders]
 verify_jwt = false

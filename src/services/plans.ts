@@ -13,7 +13,7 @@ export async function listPublicPlans(): Promise<Plan[]> {
   const { data, error } = await supabase
     .from('plans')
     .select(
-      'id, code, name, description, price_cents, billing_interval, features, permissions, max_services, max_appointments_per_month, active, created_at, updated_at',
+      'id, code, name, description, price_cents, price_yearly_cents, billing_interval, features, permissions, max_services, max_appointments_per_month, active, created_at, updated_at',
     )
     .eq('active', true)
     .order('price_cents', { ascending: true })

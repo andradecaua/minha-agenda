@@ -16,6 +16,7 @@ import { usePublicProfessional } from '@/hooks/queries/usePublicProfessional'
 import { useDocumentHead } from '@/hooks/useDocumentHead'
 import { formatCurrencyBRL, formatMinutesDuration } from '@/lib/utils'
 import { formatPhoneBR, isValidPhoneBR, telLink, waLinkBR } from '@/lib/phone'
+import { getIcon } from '@/lib/icons'
 import type { PortfolioItem, Product, Service } from '@/types/database'
 import { BookingFlow } from '@/pages/public/booking/BookingFlow'
 
@@ -363,8 +364,27 @@ function ServicesSection({ services }: { services: Service[] }) {
 }
 
 function ServiceCard({ service }: { service: Service }) {
+  const Icon = getIcon(service.icon)
+  const showThumb = !!service.image_url || !!Icon
+
   return (
     <div className="flex h-full items-start gap-4 rounded-xl border bg-card p-4 transition-colors hover:border-foreground/20 hover:bg-accent/40">
+      {showThumb && (
+        <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-muted">
+          {service.image_url ? (
+            <img
+              src={service.image_url}
+              alt=""
+              className="h-full w-full object-cover"
+              loading="lazy"
+            />
+          ) : Icon ? (
+            <div className="flex h-full w-full items-center justify-center text-muted-foreground">
+              <Icon className="h-5 w-5" aria-hidden="true" />
+            </div>
+          ) : null}
+        </div>
+      )}
       <div className="min-w-0 flex-1">
         <p className="font-medium leading-tight">{service.name}</p>
         {service.description && (
@@ -421,6 +441,7 @@ function ProductsSection({ products }: { products: Product[] }) {
 
 function ProductCard({ product }: { product: Product }) {
   const outOfStock = product.stock === 0
+  const Icon = getIcon(product.icon) ?? Package
   return (
     <div className="flex h-full flex-col overflow-hidden rounded-xl border bg-card">
       <div className="relative aspect-square bg-muted">
@@ -433,7 +454,7 @@ function ProductCard({ product }: { product: Product }) {
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center text-muted-foreground">
-            <Package className="h-7 w-7" aria-hidden="true" />
+            <Icon className="h-7 w-7" aria-hidden="true" />
           </div>
         )}
         {outOfStock && (

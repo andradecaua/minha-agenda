@@ -8,7 +8,7 @@ import type { Product } from '@/types/database'
 
 export type ProductInput = Pick<
   Product,
-  'name' | 'description' | 'price_cents' | 'stock' | 'sku' | 'active'
+  'name' | 'description' | 'price_cents' | 'stock' | 'sku' | 'icon' | 'active'
 >
 
 export async function listProducts(

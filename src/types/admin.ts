@@ -10,6 +10,12 @@ export interface Plan {
   name: string
   description: string | null
   price_cents: number
+  /**
+   * Preço anual opcional em centavos. `null` quando o plano não
+   * oferece opção anual — nesse caso só o `price_cents` (mensal)
+   * é cobrado. Ver migration 0025.
+   */
+  price_yearly_cents: number | null
   billing_interval: BillingInterval
   /**
    * Mantido por compat com RPCs antigas (0018). O campo canônico de

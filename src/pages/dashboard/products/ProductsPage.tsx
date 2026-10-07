@@ -17,6 +17,7 @@ import {
 } from '@/services/products'
 import type { Product } from '@/types/database'
 import { formatCurrencyBRL, cn } from '@/lib/utils'
+import { getIcon } from '@/lib/icons'
 import { ProductForm, type ProductFormResult } from './ProductForm'
 
 export function ProductsPage() {
@@ -235,9 +236,7 @@ function ProductCard({ product, onEdit, onToggle, onDelete, toggling }: ProductC
             loading="lazy"
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center text-muted-foreground">
-            <Package className="h-8 w-8" aria-hidden="true" />
-          </div>
+          <ProductFallbackIcon icon={product.icon} />
         )}
         {!product.active && (
           <span className="absolute left-2 top-2 rounded-full bg-background/90 px-2 py-0.5 text-xs font-medium backdrop-blur">
@@ -298,6 +297,15 @@ function ProductCard({ product, onEdit, onToggle, onDelete, toggling }: ProductC
           </Button>
         </div>
       </div>
+    </div>
+  )
+}
+
+function ProductFallbackIcon({ icon }: { icon: string | null }) {
+  const Icon = getIcon(icon) ?? Package
+  return (
+    <div className="flex h-full w-full items-center justify-center text-muted-foreground">
+      <Icon className="h-8 w-8" aria-hidden="true" />
     </div>
   )
 }

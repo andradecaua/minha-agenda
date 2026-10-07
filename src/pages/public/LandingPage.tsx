@@ -6,6 +6,7 @@ import {
   Calendar,
   Check,
   Clock,
+  Info,
   Loader2,
   Minus,
   Plus,
@@ -14,6 +15,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { cn, formatCurrencyBRL } from '@/lib/utils'
 import { usePublicPlans } from '@/hooks/queries/usePublicPlans'
+import { useMyPlan } from '@/hooks/queries/useMyPermissions'
 import { usePermissionCatalog } from '@/hooks/queries/usePermissionCatalog'
 import { useAuth } from '@/hooks/useAuth'
 import type { Plan } from '@/types/admin'
@@ -892,6 +894,8 @@ function Audience() {
 function Pricing() {
   const { data: plans, isLoading } = usePublicPlans()
   const { data: catalog } = usePermissionCatalog()
+  const { data: myPlan } = useMyPlan()
+  const [interval, setInterval] = useState<'monthly' | 'yearly'>('monthly')
 
   // Nome amigável de cada permissão. Fallback: o próprio código.
   const permissionNameByCode = useMemo(() => {
@@ -899,6 +903,21 @@ function Pricing() {
     for (const entry of catalog ?? []) map.set(entry.code, entry.name)
     return map
   }, [catalog])
+
+  // Trava anti-duplicata (mesma lógica da SubscriptionPage): se já há
+  // assinatura paga ativa e não expirada, bloqueia qualquer "Assinar"
+  // novo direto da landing. `cancelled`/`past_due` liberam de novo —
+  // é o caminho de retomar/renovar manualmente.
+  const expiresAt = myPlan?.expires_at ? new Date(myPlan.expires_at) : null
+  const hasActivePaidSub =
+    myPlan?.subscription_status === 'active' &&
+    myPlan?.plan_code !== null &&
+    myPlan?.plan_code !== 'free' &&
+    expiresAt !== null &&
+    expiresAt > new Date()
+
+  // Toggle só aparece se pelo menos um plano oferece anual.
+  const hasYearlyOption = plans?.some((p) => p.price_yearly_cents != null) ?? false
 
   return (
     <section id="planos" className="border-b border-border/70">
@@ -915,6 +934,43 @@ function Pricing() {
             </>
           }
         />
+
+        {hasActivePaidSub && expiresAt && (
+          <div
+            role="status"
+            className="mx-auto mt-10 flex max-w-2xl items-start gap-3 rounded-[10px] border border-border bg-muted/40 px-4 py-3 text-[13px]"
+          >
+            <Info
+              className="mt-0.5 h-4 w-4 flex-shrink-0 text-foreground"
+              aria-hidden="true"
+            />
+            <div className="space-y-0.5">
+              <p className="font-medium text-foreground">
+                Você já tem uma assinatura ativa.
+              </p>
+              <p className="text-muted-foreground">
+                Novas assinaturas serão liberadas após{' '}
+                <span className="font-medium text-foreground">
+                  {formatDateBR(expiresAt.toISOString())}
+                </span>
+                . Para gerenciar seu plano, acesse{' '}
+                <Link
+                  to="/dashboard/configuracoes/assinatura"
+                  className="font-medium text-foreground link-underline"
+                >
+                  minha assinatura
+                </Link>
+                .
+              </p>
+            </div>
+          </div>
+        )}
+
+        {hasYearlyOption && (
+          <div className="mt-10 flex justify-center">
+            <IntervalToggle value={interval} onChange={setInterval} />
+          </div>
+        )}
 
         <div className="mt-14">
           {isLoading ? (
@@ -940,6 +996,9 @@ function Pricing() {
                   key={plan.id}
                   plan={plan}
                   featured={plans.length > 1 && i === plans.length - 1}
+                  interval={interval}
+                  isCurrent={myPlan?.plan_code === plan.code}
+                  lockedUntilExpire={hasActivePaidSub}
                   permissionName={(code) =>
                     permissionNameByCode.get(code) ?? code
                   }
@@ -950,7 +1009,7 @@ function Pricing() {
         </div>
 
         <p className="mx-auto mt-10 max-w-md text-center text-[12px] text-muted-foreground">
-          Pague com Pix, cartão ou boleto. Renova mensalmente — você paga de novo quando o período acabar.
+          Pague com Pix, cartão ou boleto. Renova {interval === 'yearly' ? 'anualmente' : 'mensalmente'} — você paga de novo quando o período acabar.
         </p>
       </div>
     </section>
@@ -960,10 +1019,23 @@ function Pricing() {
 interface PricingCardProps {
   plan: Plan
   featured: boolean
+  /** Intervalo selecionado no toggle da seção. */
+  interval: 'monthly' | 'yearly'
+  /** Plano que o usuário logado assina hoje (match por `code`). */
+  isCurrent: boolean
+  /** Já existe assinatura paga vigente — bloqueia novo "Assinar". */
+  lockedUntilExpire: boolean
   permissionName: (code: string) => string
 }
 
-function PricingCard({ plan, featured, permissionName }: PricingCardProps) {
+function PricingCard({
+  plan,
+  featured,
+  interval,
+  isCurrent,
+  lockedUntilExpire,
+  permissionName,
+}: PricingCardProps) {
   const { session } = useAuth()
   const isFree = plan.price_cents === 0
   const benefits = Array.isArray(plan.features) ? (plan.features as string[]) : []
@@ -973,6 +1045,22 @@ function PricingCard({ plan, featured, permissionName }: PricingCardProps) {
   // Para o plano grátis: logado → dashboard; visitante → signup
   // simples (sem query param, cai direto no plano free via trigger).
   const signupHref = '/signup'
+
+  // Só mostramos preço anual se o plano oferece E o toggle tá nessa opção.
+  const showYearly =
+    interval === 'yearly' && plan.price_yearly_cents != null && plan.price_yearly_cents > 0
+  const discountPct = showYearly
+    ? Math.round(
+        ((plan.price_cents * 12 - (plan.price_yearly_cents ?? 0)) /
+          (plan.price_cents * 12)) *
+          100,
+      )
+    : 0
+
+  // CTA de pago passa ?interval=yearly quando aplicável. Pra visitante
+  // (signup), passa plan+interval em query. Pra logado, direto no checkout.
+  const checkoutQuery = showYearly ? '?interval=yearly' : ''
+  const signupQuery = showYearly ? `?plan=${plan.code}&interval=yearly` : `?plan=${plan.code}`
 
   return (
     <article
@@ -991,6 +1079,11 @@ function PricingCard({ plan, featured, permissionName }: PricingCardProps) {
           )}
         >
           Recomendado
+        </span>
+      )}
+      {showYearly && discountPct > 0 && (
+        <span className="absolute -top-2.5 right-7 rounded-full bg-emerald-500 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.14em] text-white">
+          -{discountPct}%
         </span>
       )}
 
@@ -1018,10 +1111,14 @@ function PricingCard({ plan, featured, permissionName }: PricingCardProps) {
         )}
       </header>
 
-      <div>
+      <div className="space-y-1">
         <div className="flex items-baseline gap-2">
           <span className="font-serif text-[2.75rem] leading-none">
-            {isFree ? 'R$ 0' : formatCurrencyBRL(plan.price_cents)}
+            {isFree
+              ? 'R$ 0'
+              : showYearly
+                ? formatCurrencyBRL((plan.price_yearly_cents ?? 0) / 12)
+                : formatCurrencyBRL(plan.price_cents)}
           </span>
           <span
             className={cn(
@@ -1029,9 +1126,27 @@ function PricingCard({ plan, featured, permissionName }: PricingCardProps) {
               featured ? 'text-background/60' : 'text-muted-foreground',
             )}
           >
-            /{translateInterval(plan.billing_interval)}
+            /mês
           </span>
         </div>
+        {showYearly && (
+          <p
+            className={cn(
+              'text-[12px]',
+              featured ? 'text-background/70' : 'text-muted-foreground',
+            )}
+          >
+            Cobrado anualmente:{' '}
+            <span
+              className={cn(
+                'font-medium',
+                featured ? 'text-background' : 'text-foreground',
+              )}
+            >
+              {formatCurrencyBRL(plan.price_yearly_cents ?? 0)}
+            </span>
+          </p>
+        )}
       </div>
 
       {benefits.length > 0 && (
@@ -1120,6 +1235,38 @@ function PricingCard({ plan, featured, permissionName }: PricingCardProps) {
               <ArrowRight className="h-4 w-4" aria-hidden="true" />
             </Link>
           </Button>
+        ) : isLoggedIn && isCurrent ? (
+          // Já é o plano assinado: leva pra gerenciar em vez de
+          // disparar um checkout duplicado.
+          <Button
+            asChild
+            variant="outline"
+            className={cn(
+              'h-11 w-full rounded-full',
+              featured &&
+                'border-background/30 bg-transparent text-background hover:bg-background/10',
+            )}
+          >
+            <Link to="/dashboard/configuracoes/assinatura">
+              Você está neste plano
+            </Link>
+          </Button>
+        ) : isLoggedIn && lockedUntilExpire ? (
+          // Outro plano pago já está vigente — bloqueia pra não cobrar
+          // duas vezes no mesmo período. Encaminha pra gestão.
+          <Button
+            asChild
+            variant="outline"
+            className={cn(
+              'h-11 w-full rounded-full',
+              featured &&
+                'border-background/30 bg-transparent text-background hover:bg-background/10',
+            )}
+          >
+            <Link to="/dashboard/configuracoes/assinatura">
+              Assinatura ativa em outro plano
+            </Link>
+          </Button>
         ) : (
           <>
             {/* Pago:
@@ -1138,11 +1285,17 @@ function PricingCard({ plan, featured, permissionName }: PricingCardProps) {
               <Link
                 to={
                   isLoggedIn
-                    ? `/checkout/${plan.code}`
-                    : `/signup?plan=${plan.code}`
+                    ? `/checkout/${plan.code}${checkoutQuery}`
+                    : `/signup${signupQuery}`
                 }
               >
-                {isLoggedIn ? 'Assinar' : 'Criar conta e assinar'}
+                {isLoggedIn
+                  ? showYearly
+                    ? 'Assinar anual'
+                    : 'Assinar'
+                  : showYearly
+                    ? 'Criar conta e assinar (anual)'
+                    : 'Criar conta e assinar'}
                 <ArrowRight className="h-4 w-4" aria-hidden="true" />
               </Link>
             </Button>
@@ -1161,10 +1314,51 @@ function PricingCard({ plan, featured, permissionName }: PricingCardProps) {
   )
 }
 
-function translateInterval(i: string): string {
-  if (i === 'monthly') return 'mês'
-  if (i === 'yearly') return 'ano'
-  return 'vitalício'
+function IntervalToggle({
+  value,
+  onChange,
+}: {
+  value: 'monthly' | 'yearly'
+  onChange: (next: 'monthly' | 'yearly') => void
+}) {
+  return (
+    <div className="inline-flex rounded-full border border-border bg-background p-0.5">
+      <button
+        type="button"
+        onClick={() => onChange('monthly')}
+        className={cn(
+          'rounded-full px-4 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors',
+          value === 'monthly'
+            ? 'bg-foreground text-background'
+            : 'text-muted-foreground hover:text-foreground',
+        )}
+      >
+        Mensal
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange('yearly')}
+        className={cn(
+          'rounded-full px-4 py-1.5 font-mono text-[11px] uppercase tracking-[0.14em] transition-colors',
+          value === 'yearly'
+            ? 'bg-foreground text-background'
+            : 'text-muted-foreground hover:text-foreground',
+        )}
+      >
+        Anual
+      </button>
+    </div>
+  )
+}
+
+function formatDateBR(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  return new Intl.DateTimeFormat('pt-BR', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+  }).format(d)
 }
 
 /* ──────────────────────────────────────────────────────────────── */

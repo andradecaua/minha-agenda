@@ -16,13 +16,32 @@ templates via SQL / migrations — a edição é no painel.
 
 ## Templates disponíveis
 
-| Arquivo                   | Template no Supabase | Assunto sugerido                 |
-| ------------------------- | -------------------- | -------------------------------- |
-| `confirm-signup.html`     | **Confirm signup**   | Confirme seu e-mail · Minha Agenda |
-| `confirm-signup.txt`      | fallback texto       | (idem)                           |
+| Arquivo                   | Template no Supabase    | Assunto sugerido                   |
+| ------------------------- | ----------------------- | ---------------------------------- |
+| `confirm-signup.html`     | **Confirm signup**      | Confirme seu e-mail · Minha Agenda |
+| `confirm-signup.txt`      | fallback texto          | (idem)                             |
+| `recovery.html`           | **Reset password**      | Redefinir sua senha · Minha Agenda |
+| `recovery.txt`            | fallback texto          | (idem)                             |
 
-> Mais templates (recuperação de senha, magic link, mudança de e-mail)
-> virão nas próximas fases.
+> Mais templates (magic link, mudança de e-mail) virão quando houver
+> fluxo que precise.
+
+### Importante — `redirectTo` do recovery
+
+Pra o template de **Reset password** funcionar sem bugar o redirect
+do app, o `{{ .ConfirmationURL }}` precisa levar o usuário pra
+`/reset-password` (fora do `GuestOnlyRoute`). O frontend já passa
+isso em `AuthContext.sendPasswordReset()`:
+
+```ts
+supabase.auth.resetPasswordForEmail(email, {
+  redirectTo: `${window.location.origin}/reset-password`,
+})
+```
+
+Não precisa configurar nada manualmente no painel do Supabase além
+de colar o template — o `redirectTo` é injetado pelo frontend a cada
+chamada e o Supabase anexa à URL final.
 
 ## Variáveis disponíveis
 

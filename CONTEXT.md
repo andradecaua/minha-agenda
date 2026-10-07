@@ -86,6 +86,7 @@ Storage buckets (Supabase Storage):
 avatars/{professional_id}/{random}.{ext}    — 2MB, JPG/PNG/WEBP
 portfolio/{professional_id}/{random}.{ext}  — 5MB, JPG/PNG/WEBP
 products/{professional_id}/{random}.{ext}   — 5MB, JPG/PNG/WEBP
+services/{professional_id}/{random}.{ext}   — 5MB, JPG/PNG/WEBP (0026)
 ```
 
 Policies restringem escrita ao dono via `(storage.foldername(name))[1]`.
@@ -118,15 +119,18 @@ Representa o profissional. 1-para-1 com `auth.users`.
 
 | Coluna            | Tipo        | Observações                        |
 | ----------------- | ----------- | ---------------------------------- |
-| id                | uuid PK     |                                    |
-| professional_id   | uuid        | FK `profiles(id)` ON DELETE CASCADE|
-| name              | text        |                                    |
-| description       | text NULL   |                                    |
-| price_cents       | integer     | Guardamos em centavos (`>= 0`)     |
-| duration_minutes  | integer     | `> 0`                              |
-| active            | boolean     | default `true`                     |
-| created_at        | timestamptz |                                    |
-| updated_at        | timestamptz |                                    |
+| id                 | uuid PK     |                                                      |
+| professional_id    | uuid        | FK `profiles(id)` ON DELETE CASCADE                  |
+| name               | text        |                                                      |
+| description        | text NULL   |                                                      |
+| price_cents        | integer     | Guardamos em centavos (`>= 0`)                       |
+| duration_minutes   | integer     | `> 0`                                                |
+| icon               | text NULL   | nome lucide-react (0026) — ver `src/lib/icons.ts`    |
+| image_url          | text NULL   | foto (0026). Upload exige permissão `custom_images`  |
+| image_storage_path | text NULL   | caminho no bucket `services` (0026)                  |
+| active             | boolean     | default `true`                                       |
+| created_at         | timestamptz |                                                      |
+| updated_at         | timestamptz |                                                      |
 
 > **Por que `price_cents`?** Evita o pesadelo de arredondamento com
 > `numeric` e `float` para dinheiro. A UI formata para `R$`.
@@ -260,9 +264,10 @@ RLS: SELECT público (`using (true)`), demais operações só do dono.
 | description     | text NULL   |                      |
 | price_cents     | integer     | `>= 0`               |
 | stock           | integer     | default `0` (`>= 0`) |
-| sku             | text NULL   |                      |
-| image_url       | text NULL   |                      |
-| active          | boolean     | default `true`       |
+| sku             | text NULL   |                                                   |
+| image_url       | text NULL   | foto. Upload exige permissão `custom_images` (0026) |
+| icon            | text NULL   | nome lucide-react (0026) — ver `src/lib/icons.ts` |
+| active          | boolean     | default `true`                                    |
 | created_at      | timestamptz |                      |
 | updated_at      | timestamptz |                      |
 
@@ -529,6 +534,7 @@ PÚBLICO
   /login
   /signup
   /forgot-password
+  /reset-password         → destino do link do email ("esqueci minha senha")
   /p/:slug                → página pública do profissional
 
 PROTEGIDO (requer sessão)
@@ -628,6 +634,502 @@ Se faltar atualização, considere a entrega incompleta.
 ---
 
 ## Changelog
+
+- **2026-10-07** — **Ícones e fotos personalizadas em serviços/produtos
+  (migration 0026).**
+
+  Duas camadas de personalização pros cadastros:
+
+  1. **Ícone** (ambos, grátis pra todo mundo). `services.icon` e
+     `products.icon` guardam o NOME de um ícone do lucide-react.
+     Catálogo curado no frontend (`src/lib/icons.ts` — ~24 ícones
+     cobrindo os nichos: barbearia, salão, estética, tatuagem,
+     fitness, bem-estar). A validação de "ícone válido" acontece no
+     form, não no banco — a lista pode evoluir sem migration.
+     `getIcon(name)` resolve nome → componente; devolve `null` se
+     não achar (fallback é o ícone genérico Scissors/Package).
+  2. **Foto personalizada** (atrás da nova permissão `custom_images`):
+     - Produtos já tinham `image_url` desde a 0012; a 0026 só adiciona
+       o gate no UI. Fotos pré-existentes de quem perdeu a permissão
+       continuam visíveis (não forçamos retirada).
+     - Serviços ganham `image_url` + `image_storage_path` novos e um
+       bucket `services` no Storage, mesmas policies do `products`
+       (SELECT público; CRUD do dono via prefixo do path).
+
+  **Schema (0026):**
+  - `services.icon text`, `services.image_url text`,
+    `services.image_storage_path text` (todos NULL).
+  - `products.icon text` (NULL). `image_url` já existia.
+  - `permission_catalog` ganha `custom_images` na categoria `conteudo`.
+  - Plano `pro` recebe `custom_images` automaticamente via UPDATE
+    idempotente — evita regressão pra quem já conseguia subir foto em
+    produtos.
+  - Bucket `services` (5MB, JPG/PNG/WEBP) + policies de SELECT público
+    e CRUD só do dono (`(storage.foldername(name))[1] =
+    current_professional_id()::text`).
+
+  **Frontend:**
+  - `src/lib/icons.ts` — catálogo + `getIcon(name)`.
+  - `src/components/ui/icon-picker.tsx` — grid de ícones acessível
+    (role=radiogroup) com botão "Limpar".
+  - `src/lib/permissions.ts` — nova constante `CUSTOM_IMAGES`.
+  - `src/types/database.ts` — `Service` e `Product` ganham `icon` (e
+    service ganha `image_url`/`image_storage_path`).
+  - `src/services/storage.ts` — bucket `services` adicionado ao
+    `UploadBucket` + `SERVICES_MAX_BYTES`.
+  - `src/services/services.ts` — refactor completo:
+    `createService(professionalId, input, { imageFile })` e
+    `updateService(current, patch, { imageFile, removeImage })`
+    recebem o `Service` inteiro e opções de imagem (padrão do
+    products.ts). Rollback de blob em caso de INSERT/UPDATE falho.
+    `toggleServiceActive(service, active)` e `deleteService(service)`
+    agora também recebem o Service (pra limpar o blob no delete).
+  - `src/services/products.ts` — `ProductInput` ganha `icon`.
+  - **Forms:** `ServiceForm` e `ProductForm` ganham `IconPicker`
+    (livre pra todos). Upload de foto só aparece quando
+    `can(CUSTOM_IMAGES)` — gate no UI, não no RLS. `ServiceForm`
+    passa a usar o padrão `FormResult` (input + imageFile +
+    removeImage) idêntico ao `ProductForm`.
+  - **Vitrines:** `ServicesPage` ganha `<ServiceThumb>` com
+    precedência foto > ícone escolhido > Scissors default.
+    `ProductsPage` troca o Package fixo pelo ícone do produto.
+    `ProfessionalPage` (página pública) idem: foto/ícone no
+    `ServiceCard`, e `ProductCard` usa o ícone escolhido como
+    fallback.
+
+  **Trade-offs assumidos:**
+  - Lista de ícones NO frontend (não no banco). Prós: evolui sem
+    migration e sem round-trip; o nome salvo é só uma string. Contras:
+    se tree-shaking de prod remover um ícone que já foi salvo, cai
+    pro fallback silenciosamente — comportamento desejado.
+  - **Fotos antigas de produtos permanecem visíveis** mesmo pra quem
+    perder `custom_images`. Não forçamos retirada automática pra
+    evitar surpresa; o user que fizer downgrade continua enxergando
+    a foto antiga (só não pode trocar/remover). Se virar problema,
+    a correção é um gate adicional no SELECT público — não mexido
+    agora.
+  - `BookingFlow` NÃO renderiza foto/ícone na seleção de serviço —
+    ali é fluxo de ação, não vitrine. A thumb já aparece no card do
+    `ProfessionalPage` que o cliente vê antes de abrir o booking.
+
+  **Setup pós-deploy:**
+  ```
+  supabase db push          # aplica 0026 (cria bucket + policies)
+  ```
+  Nada de edge function nova. Nenhum secret novo.
+
+- **2026-10-06** — **Opção anual por plano + toggle de intervalo
+  (migration 0025).**
+
+  Um plano pago agora pode oferecer **duas opções de cobrança
+  simultâneas**: mensal (`price_cents`) e anual opcional
+  (`price_yearly_cents`). Quando o anual existe, a landing e a
+  SubscriptionPage mostram um toggle "Mensal / Anual" acima dos
+  cards; selecionar anual exibe o preço mensal equivalente
+  (`yearly / 12`), uma linha "cobrado anualmente R$X", e um badge
+  verde "-N%" no canto do card com o desconto derivado
+  (`(mensal*12 - anual) / (mensal*12)`).
+
+  **Schema (0025):**
+  - `plans.price_yearly_cents int NULL` — NULL = plano só mensal.
+  - `subscriptions.current_interval text` not null default 'monthly'
+    + CHECK monthly/yearly — necessário pra webhook saber por
+    quantos meses estender o período na próxima renovação.
+  - `admin_create_plan` e `admin_update_plan` ganham
+    `p_price_yearly_cents int`. Em `update`, sentinel **-1** limpa
+    (desliga anual); null = não altera (padrão da RPC); número >= 0
+    = seta.
+  - `activate_subscription_from_webhook` ganha `p_interval text`
+    (default 'monthly' pra compat); escreve `current_interval` na
+    subscription. Período em si (`p_current_period_end`) continua
+    vindo pré-calculado pela edge.
+  - `my_plan` passou a devolver `plan_price_cents`,
+    `plan_price_yearly_cents` e `current_interval` — frontend
+    renderiza o toggle sem round-trip extra.
+
+  **Edge functions:**
+  - `create-subscription` aceita `interval` no body (default
+    'monthly'). Valida que `price_yearly_cents` existe quando
+    yearly, senão devolve `yearly_not_offered`. `external_reference`
+    virou `user_id:plan_id:interval` (3º segmento opcional pra
+    compat com webhooks de compras antigas).
+  - `mercadopago-webhook` parseia o 3º segmento, chama
+    `addPeriodIso(date, interval)` (`+1 ano` ou `+1 mês`), passa
+    `p_interval` pra RPC de ativação. Fallback 'monthly' se vier
+    sem.
+  - `addMonthIso` virou `addPeriodIso(base, interval)`.
+
+  **Frontend:**
+  - `Plan.price_yearly_cents: number | null` e `MyPlan` ganham
+    `plan_price_cents`, `plan_price_yearly_cents`, `current_interval`.
+  - `services/plans.ts` seleciona a nova coluna.
+  - `services/admin.ts.updatePlan` traduz `null` → `-1` sentinel
+    (desliga) e `undefined` → `null` (não altera); number → novo
+    preço.
+  - `services/checkout.ts.createCheckoutForPlan(planId, interval?)`
+    + `CheckoutInterval` exportado + label pro erro
+    `yearly_not_offered`.
+  - `AdminPlansPage`: toggle "Oferecer plano anual" com Switch;
+    quando ligado, input "Preço anual" + preview "-N% vs 12 × mensal"
+    (verde = desconto, âmbar = anual mais caro — flag de erro de
+    digitação). Card do plano no grid ganha badge "+ anual R$X".
+  - `LandingPage.Pricing`: toggle "Mensal / Anual" acima do grid,
+    só aparece quando pelo menos um plano oferece anual. Cada
+    `PricingCard` recebe `interval` e, quando yearly ativo, mostra
+    `yearly/12` como preço mensal equivalente + "Cobrado
+    anualmente" + badge "-N%". CTA passa `?interval=yearly`.
+  - `SubscriptionPage`: mesma estrutura (toggle + `PlanCard` com
+    `interval`).
+  - `SignupPage`: lê `?interval=yearly` e reconstrói o `redirectTo`
+    como `/checkout/<code>?interval=yearly`. `checkoutPlanCode`
+    agora faz strip da query antes de usar.
+  - `CheckoutRedirectPage`: lê `?interval` da URL e passa pra
+    `createCheckoutForPlan`.
+
+  **Trade-offs assumidos:**
+  - `billing_interval` em `plans` virou mais ou menos cosmético —
+    o preço mensal é sempre `price_cents` e anual é
+    `price_yearly_cents`. Admin ainda pode escolher 'yearly' no
+    select pra sinalizar "plano pensado como anual", mas o preço
+    primário continua em `price_cents`. Não removi o campo pra
+    não quebrar seeds antigos.
+  - Toggle no dashboard é client-side state (`useState`) — se o
+    user navegar entre páginas, perde a seleção. Pra MVP ok.
+
+  **Setup pós-deploy:**
+  ```
+  supabase db push          # aplica 0025
+  supabase functions deploy create-subscription
+  supabase functions deploy mercadopago-webhook
+  ```
+
+- **2026-10-06** — **Email de agradecimento pela compra + template de
+  recovery.**
+
+  **Agradecimento pela compra.** No webhook do MP, logo depois de
+  `activate_subscription_from_webhook` ter sucesso em
+  `payment.status === 'approved'`, dispara um email de confirmação
+  pro usuário com plano, valor pago, data até quando o acesso vale e
+  número da transação.
+
+  - Idempotência: `record_payment_event` já devolvia `boolean`
+    (`true` só na primeira inserção — ON CONFLICT DO NOTHING via
+    UNIQUE `(gateway, gateway_event_id)`). Antes o webhook ignorava
+    esse retorno; agora captura em `isNewEvent` e só manda o email
+    quando é evento novo. Replay do MP (que acontece normalmente)
+    não dispara email duplicado.
+  - Fire-and-forget: `sendPurchaseThankYouEmail().catch(log)` pra
+    não atrasar o 200 pro MP (que precisa de resposta rápida).
+    Qualquer falha de envio só vai pro log — não re-throw.
+  - Reusa `_shared/email.ts` + secrets `SMTP_*` já configurados.
+  - Visual: mesma linguagem dos outros templates (`confirm-signup`,
+    `send-renewal-reminders`) — card branco, botão escuro, resumo
+    estilo "fatura" com plano/valor/vencimento.
+
+  **Template de recovery.** Antes só havia template de confirmação
+  de signup; o email de "redefinir senha" caía no default genérico do
+  Supabase. Novos arquivos:
+
+  - `supabase/email-templates/recovery.html` — mesma estética do
+    `confirm-signup.html`. Usa `{{ .ConfirmationURL }}` do Go-template
+    do Supabase, que já concatena com o `redirectTo` passado pelo
+    frontend (`/reset-password` depois do bug fix anterior).
+  - `supabase/email-templates/recovery.txt` — fallback plain text.
+  - `supabase/email-templates/README.md` — nova linha na tabela de
+    templates + seção "Importante — `redirectTo` do recovery" com
+    o pulo-do-gato pro operador que for colar o template.
+
+  **Setup pós-deploy do agradecimento:**
+  Nenhum adicional — reusa os secrets `SMTP_*` + `SITE_URL` já
+  setados pra `send-renewal-reminders`. Basta re-deploy:
+  ```
+  supabase functions deploy mercadopago-webhook
+  ```
+
+  **Setup pós-deploy do template de recovery (manual, no painel):**
+  Supabase Dashboard → Authentication → Emails → Email Templates →
+  **Reset Password** → cole o conteúdo de `recovery.html` em
+  "Message (HTML)" e `recovery.txt` em "Message (Plain Text)" (se
+  seu tier/região expõe esse campo) → salvar.
+
+  **Dívida assumida:** o email de agradecimento também dispara em
+  renovação (não só na primeira compra). Textualmente funciona pra
+  ambos ("Pagamento confirmado"), mas uma versão específica de
+  "assinatura renovada" seria mais acurada. Fica pra depois — baixa
+  prioridade.
+
+- **2026-10-06** — **Bug: troca de senha redirecionava pro dashboard.**
+  O `sendPasswordReset` passava `redirectTo: ${origin}/login` — rota
+  essa que fica sob `GuestOnlyRoute`. Quando o browser abria o link
+  do email, o SDK do Supabase (com `detectSessionInUrl: true`, default)
+  criava uma sessão de recovery; o Guest guard via sessão e mandava
+  `Navigate to /dashboard`, cortando o fluxo antes do user poder setar
+  a senha nova.
+
+  Correção:
+  - Nova página `src/pages/auth/ResetPasswordPage.tsx` com formulário
+    de "nova senha + confirmar" + validação local (min 8 chars, iguais).
+    Chama `updatePassword` do `AuthContext`. Sem sessão depois de um
+    beat de 500ms, mostra "link inválido/expirado" + CTA pra
+    `/forgot-password`.
+  - `AuthContext.updatePassword(newPassword)` — thin wrapper em
+    `supabase.auth.updateUser({ password })`.
+  - `sendPasswordReset` passa `redirectTo: ${origin}/reset-password`.
+  - `AppRoutes.tsx` — rota `/reset-password` em `PublicLayout` mas
+    FORA do `GuestOnlyRoute` (precisa ser acessível com sessão de
+    recovery ativa). Comentário no arquivo explicando o porquê.
+
+  **Trade-off:** mantido o `redirectTo` do `resendSignupEmail` como
+  `/login` porque pra confirmação de signup o fluxo é inverso — o
+  user confirma o email e já cai logado no dashboard, que é o
+  comportamento esperado.
+
+- **2026-10-06** — **Revertido: Sentry no frontend.** Decisão do dono
+  do projeto — removido pra evitar dependência de serviço pago/externo
+  (apesar do free tier aguentar MVP). Mantido só o alerta de HMAC
+  fallback do webhook, que não depende de Sentry.
+
+  Reverter de volta ao estado anterior:
+  - Deletado `src/lib/sentry.ts`.
+  - `src/main.tsx` — removida chamada `initSentry()` e import.
+  - `src/components/ErrorBoundary.tsx` — `componentDidCatch` voltou pro
+    `console.error` + comentário original "em produção enviaria para
+    Sentry/etc.".
+  - `src/contexts/AuthContext.tsx` — removidos imports e chamadas de
+    `syncSentryUser` / `clearSentryUser`.
+  - `.env.example` — removida linha `VITE_SENTRY_DSN=`.
+  - `package.json` — desinstalado `@sentry/browser`.
+
+  **Se um dia reconsiderar**, o padrão simples era: `src/lib/sentry.ts`
+  com `initSentry` + `reportError` como no-op quando DSN vazio, hook em
+  `main.tsx` antes do `createRoot`, `ErrorBoundary.componentDidCatch`
+  chamando `reportError`, e `AuthContext` fazendo `setSentryUser` no
+  `onAuthStateChange`. O patch inteiro era ~70 linhas.
+
+- **2026-10-06** — **Observabilidade: Sentry no frontend + alerta de
+  HMAC fallback no webhook.**
+
+  Dois dos "riscos moderados" do roadmap (monitoramento de erros zerado
+  e fallback HMAC silencioso) viraram infra concreta nesta entrega.
+
+  **Sentry no frontend** — reporta exceções não tratadas, promise
+  rejections e qualquer coisa passada via `reportError()`:
+
+  - Pacote: `@sentry/browser` (não `@sentry/react`). A app já tem
+    `ErrorBoundary` custom em `src/components/ErrorBoundary.tsx` —
+    integração do React do Sentry era redundante. `@sentry/browser`
+    é ~70kb menor e o bundle praticamente não cresceu (+200 bytes
+    gzipped — tree-shaking agressivo).
+  - `src/lib/sentry.ts`: `initSentry()`, `reportError()`,
+    `setSentryUser()`, `clearSentryUser()`. Com `VITE_SENTRY_DSN`
+    vazio, tudo vira no-op silencioso. `reportError()` sempre loga
+    via `console.error` (visibilidade local em dev).
+  - `src/main.tsx`: `initSentry()` ANTES de `createRoot` pra pegar
+    erros de bootstrap.
+  - `src/components/ErrorBoundary.tsx.componentDidCatch` passou de
+    `console.error` pra `reportError(error, { componentStack })`.
+  - `src/contexts/AuthContext.tsx`: `syncSentryUser(user)` em
+    `onAuthStateChange` + no `getSession` inicial, pra associar
+    eventos ao `user.id` + email. `clearSentryUser()` em logout.
+  - `.env.example` ganhou `VITE_SENTRY_DSN=` (vazio = desativado).
+  - Config: `tracesSampleRate` em 0.1 em prod (0 em dev),
+    `ignoreErrors` filtra `ResizeObserver loop...` e `AbortError`,
+    `denyUrls` filtra `chrome-extension://` e `moz-extension://`
+    (ruído de extensões injetando scripts).
+
+  **Setup pós-deploy:**
+  1. Criar projeto no Sentry (free tier basta pra MVP: 5k erros/mês).
+  2. Pegar o DSN em Settings → Projects → <projeto> → Client Keys.
+  3. Setar `VITE_SENTRY_DSN=<dsn>` no `.env` local e no CI/CD de
+     deploy do Firebase. Rebuild + redeploy.
+  4. Confirmar primeiro evento forçando um throw numa página de dev.
+
+  **Alerta de HMAC fallback no webhook** — quando o duplo-check
+  salva um webhook com HMAC inválido (ex.: `MP_WEBHOOK_SECRET`
+  rotacionado silenciosamente), um email vai pro operador em vez
+  de ficar só no console.
+
+  - Em `supabase/functions/mercadopago-webhook/index.ts`: depois do
+    `console.warn` do fallback aceito, dispara `sendEmail` em
+    fire-and-forget (não bloqueia a resposta do webhook — MP precisa
+    de resposta rápida pra não reenviar).
+  - Guard: `ALERT_EMAIL_TO` precisa estar setada; sem o secret, pula.
+  - Email HTML minimalista (monospace, dados crus) com `payment_id`,
+    `user_id`, `x-request-id` e `fired_at` — operador vai direto no
+    Logs da edge com esses campos pra investigar.
+  - Rate limiting: NENHUM. Se o secret ficar quebrado 100 webhooks
+    seguidos chegam → 100 emails. Trade-off aceito: é o sinal mais
+    forte que algo precisa de atenção. Se virar incômodo, adicionar
+    uma tabela `webhook_alerts (last_sent_at)` com janela de 1h.
+
+  **Setup pós-deploy:**
+  ```
+  supabase secrets set ALERT_EMAIL_TO=operador@seu-dominio.com
+  supabase functions deploy mercadopago-webhook
+  ```
+  Reusa os secrets `SMTP_*` da entrega anterior (lembrete de
+  renovação) — infraestrutura de email está unificada em
+  `_shared/email.ts`.
+
+  **Arquivos:**
+  - Novo `src/lib/sentry.ts`
+  - `src/main.tsx` — chama `initSentry()`
+  - `src/components/ErrorBoundary.tsx` — usa `reportError`
+  - `src/contexts/AuthContext.tsx` — `syncSentryUser` no auth state
+  - `.env.example` — `VITE_SENTRY_DSN`
+  - `supabase/functions/mercadopago-webhook/index.ts` — alerta +
+    `renderHmacAlert()`
+  - `package.json` — `@sentry/browser@11.4.0`
+
+  **Dívida assumida:** edge functions ainda não têm observabilidade
+  (Sentry Deno). Em MVP os logs do painel do Supabase bastam. Avaliar
+  quando a frequência de erros virar incômoda ou quando o volume
+  passar de 100 req/dia.
+
+- **2026-10-06** — **Cancelamento de assinatura + lembrete de renovação
+  (migration 0024 + edge `send-renewal-reminders`).**
+
+  **Pendência 1/2** — cancelamento iniciado pelo próprio usuário. No
+  modelo Preference (0023), o MP já cobrou uma única vez — não existe
+  recorrência pra "desligar". Logo "cancelar" é só marcar
+  `cancel_at_period_end=true`; o acesso segue válido até
+  `current_period_end` e o `has_feature()` (0019) rebaixa pro free
+  automaticamente ao expirar. **Nenhuma edge function necessária** —
+  é RPC + UI.
+
+  - Nova RPC `public.cancel_my_subscription()` (SECURITY DEFINER,
+    grant `authenticated`). Idempotente: re-chamar com flag já
+    setada é no-op. Só opera em plano pago; free devolve
+    `nothing_to_cancel`. Grava trilha em `admin_audit_log` com
+    action `user_cancel_subscription`.
+  - `my_plan` estendida com `cancel_at_period_end` — frontend evita
+    um segundo round-trip pra renderizar o botão de cancelar.
+  - Hotfix embutido: `my_subscription_detail` (0021) referenciava
+    `pl.gateway_plan_id`, coluna removida pela 0023. Reescrita sem
+    a coluna (nenhum caller atual usa a RPC, mas RPC quebrada é
+    dívida que estava escondida).
+  - UI em `SubscriptionPage.tsx`: botão "Cancelar assinatura" no
+    `CurrentPlanCard` quando `hasActivePaidSub && !cancel_at_period_end`,
+    `ConfirmDialog` destrutivo pedindo confirmação, alert em âmbar
+    quando `cancel_at_period_end=true` dizendo até quando o acesso
+    vale. Invalida `['my-plan', user.id]` após sucesso.
+
+  **Pendência 2/2** — lembrete de renovação por email. Edge function
+  `send-renewal-reminders` invocada por `pg_cron` diário via `pg_net`.
+  Idempotência via `renewal_reminder_sent_at`.
+
+  - Nova coluna `subscriptions.renewal_reminder_sent_at timestamptz`.
+    NULL = nunca enviou. A edge pula se o `sent_at` cai dentro do
+    ciclo atual (`>= current_period_end - 1 month`); como o webhook
+    de ativação avança o `current_period_end` em 1 mês a cada
+    renovação, o filtro naturalmente libera o próximo lembrete sem
+    precisar resetar a coluna.
+  - Nova edge `supabase/functions/send-renewal-reminders/index.ts`:
+    service_role, autenticada por header `x-cron-secret` (não JWT —
+    quem chama é o Postgres via `pg_net`). Query: `status=active`,
+    `cancel_at_period_end=false`, `plans.price_cents>0`,
+    `current_period_end BETWEEN now()+3d AND now()+7d`. Pra cada
+    match: busca email via `auth.admin.getUserById`, envia via
+    `_shared/email.ts`, grava `renewal_reminder_sent_at=now()`.
+  - Novo `supabase/functions/_shared/email.ts`: wrapper de
+    `denomailer` configurável por env (`SMTP_HOST`, `SMTP_PORT`,
+    `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, `SMTP_FROM_NAME`).
+    Default 465/TLS implícito; 587/STARTTLS também funciona.
+    Agnóstico de provedor — mesma edge funciona com Gmail hoje,
+    Resend amanhã (basta trocar secrets).
+  - Email HTML inline-styled, dark button, com link pra
+    `/dashboard/configuracoes/assinatura`. Fallback text/plain
+    extraído do HTML.
+  - Extensões `pg_cron` + `pg_net` habilitadas na 0024 (`create
+    extension if not exists`). Agendamento efetivo NÃO vai na
+    migration — depende de URL do projeto + `CRON_SECRET` que o
+    operador seta. Setup SQL em "Deploy — cron de lembretes" abaixo.
+
+  **Deploy — cron de lembretes de renovação:**
+
+  1. Setar secrets no projeto Supabase:
+     ```
+     supabase secrets set CRON_SECRET=$(openssl rand -hex 32)
+     supabase secrets set SMTP_HOST=smtp.gmail.com
+     supabase secrets set SMTP_PORT=465
+     supabase secrets set SMTP_USER=seu@gmail.com
+     supabase secrets set SMTP_PASS=<app-password-do-gmail>
+     supabase secrets set SMTP_FROM=seu@gmail.com
+     supabase secrets set SITE_URL=https://appminhaagenda.web.app
+     ```
+     Gmail: ativar 2FA → "App passwords" no Google Account → gerar
+     senha específica → usar como `SMTP_PASS`. Senha normal da
+     conta NÃO funciona.
+
+  2. Deploy da função:
+     ```
+     supabase functions deploy send-renewal-reminders
+     ```
+
+  3. Registrar o cron (uma vez, no SQL Editor do Supabase, com
+     URL do projeto + mesmo `CRON_SECRET` setado acima):
+     ```sql
+     select cron.schedule(
+       'send-renewal-reminders-daily',
+       '0 12 * * *',  -- 09h BRT
+       $$
+         select net.http_post(
+           url := 'https://<project>.supabase.co/functions/v1/send-renewal-reminders',
+           headers := jsonb_build_object(
+             'Content-Type', 'application/json',
+             'x-cron-secret', '<CRON_SECRET_IGUAL_AO_DOS_SECRETS>'
+           ),
+           body := '{}'::jsonb
+         );
+       $$
+     );
+     ```
+     Pra ver execuções: `select * from cron.job_run_details order by
+     start_time desc limit 20;`. Pra deletar o job:
+     `select cron.unschedule('send-renewal-reminders-daily');`.
+
+  **Arquivos:**
+  - Novo `supabase/migrations/0024_user_cancel_and_renewal_reminders.sql`
+  - Novo `supabase/functions/send-renewal-reminders/index.ts`
+  - Novo `supabase/functions/_shared/email.ts`
+  - `supabase/config.toml` — adiciona
+    `[functions.send-renewal-reminders] verify_jwt = false`
+  - `src/services/checkout.ts` — `cancelMySubscription()` +
+    `CANCEL_ERROR_LABEL`
+  - `src/services/permissions.ts` — `MyPlan.cancel_at_period_end`
+  - `src/pages/dashboard/settings/SubscriptionPage.tsx` — botão
+    cancelar + `ConfirmDialog` + alert "renovação cancelada"
+
+  **Dívida assumida:** o cron depende de setup manual. Automatizar
+  via `vault.decrypted_secrets` seria possível, mas acrescenta
+  complexidade pra 1 cron só. Reavaliar se chegarmos a 3+ crons.
+
+- **2026-10-06** — **Landing: trava anti-duplicata no `PricingCard`.**
+  A trava que já existia em `SubscriptionPage` (dashboard) não cobria o
+  caminho pela landing — usuário logado com assinatura paga vigente
+  conseguia clicar "Assinar" em `/#planos` e disparar um segundo
+  checkout, gerando risco de cobrança duplicada no mesmo período.
+
+  Replicado o mesmo filtro na landing:
+  - `Pricing` passou a consumir `useMyPlan()`. Com visitante, o hook
+    fica desabilitado (`enabled: !!user`) e `myPlan` é `undefined` —
+    nada muda pro público não logado.
+  - `hasActivePaidSub` é verdadeiro quando `subscription_status =
+    'active'`, `plan_code != 'free'` e `expires_at > now()`. Status
+    `cancelled`/`past_due` liberam de novo (caminho de retomar).
+  - Quando `hasActivePaidSub`, aparece um aviso neutro acima dos cards
+    com a data de liberação e um link pra
+    `/dashboard/configuracoes/assinatura`.
+  - `PricingCard` ganhou props `isCurrent` e `lockedUntilExpire`:
+    - Pago + `isCurrent` → "Você está neste plano" (link pra gestão).
+    - Pago + `lockedUntilExpire` (plano pago diferente) →
+      "Assinatura ativa em outro plano" (link pra gestão).
+    - Caso contrário, mantém o fluxo original (`/checkout/:code` pra
+      logado, `/signup?plan=:code` pra visitante).
+
+  **Arquivos:** `src/pages/public/LandingPage.tsx` (imports do `Info`
+  + `useMyPlan`; `Pricing` com guard; `PricingCard` com nova prop +
+  branches `isCurrent`/`lockedUntilExpire`; helper `formatDateBR`).
 
 - **2026-10-06** — **Webhook do MP: `notification_url` + fallback por
   duplo-check + lenient em topics acessórios.** Três ajustes no

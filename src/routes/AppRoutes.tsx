@@ -15,6 +15,7 @@ import { PERMISSIONS } from '@/lib/permissions'
 import { LoginPage } from '@/pages/auth/LoginPage'
 import { SignupPage } from '@/pages/auth/SignupPage'
 import { ForgotPasswordPage } from '@/pages/auth/ForgotPasswordPage'
+import { ResetPasswordPage } from '@/pages/auth/ResetPasswordPage'
 import { NotFoundPage } from '@/pages/NotFoundPage'
 
 // Páginas de dashboard/públicas — code-split por rota via React.lazy.
@@ -160,6 +161,14 @@ export function AppRoutes() {
             <Route path="/signup" element={<SignupPage />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           </Route>
+        </Route>
+
+        {/* /reset-password NÃO entra no GuestOnlyRoute: quando o
+            usuário abre o link do email, o Supabase SDK cria uma
+            sessão de recovery, e um Guest guard mandaria pro
+            dashboard antes de dar chance de setar a nova senha. */}
+        <Route element={<PublicLayout />}>
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
         </Route>
 
         <Route element={<PublicLayout />}>

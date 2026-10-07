@@ -1,0 +1,17 @@
+Minha Agenda — Redefinir sua senha
+
+Recebemos um pedido para redefinir a senha da sua conta na Minha
+Agenda. Para escolher uma nova senha, abra o link abaixo:
+
+{{ .ConfirmationURL }}
+
+Esse link expira em algumas horas e só pode ser usado uma vez.
+
+----
+Não foi você? Pode ignorar este e-mail — sua senha atual continua
+valendo enquanto este link não for usado.
+
+Dica: se este e-mail acabou no Spam ou Promoções, marque como "não é
+spam" para receber os próximos sem problema.
+
+Enviado por Minha Agenda · Este é um e-mail automático, não responda.
