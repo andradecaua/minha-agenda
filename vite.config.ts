@@ -21,12 +21,16 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      // Auto-registra o SW e aplica atualização SEM pedir confirmação.
-      // Como só cacheamos o shell (JS/CSS/fontes/ícones), aplicar
-      // update automaticamente é seguro — dados do Supabase sempre
-      // vêm do servidor.
-      registerType: 'autoUpdate',
-      injectRegister: 'auto',
+      // 'prompt': novo SW instala em background mas aguarda confirmação
+      // pra ativar. O frontend usa `useRegisterSW` em
+      // `PwaUpdateBanner` pra mostrar "Nova versão disponível" com um
+      // botão "Atualizar". Melhor UX que o `autoUpdate` silencioso —
+      // o user vê que algo mudou, e pode escolher o momento de recarregar
+      // sem perder trabalho em formulários/thread aberta.
+      registerType: 'prompt',
+      // Registro manual via hook (`useRegisterSW`). Impedir o
+      // auto-registro evita duplicata e deixa o hook controlar o ciclo.
+      injectRegister: null,
       // Inclui os assets do /public no precache (ícones e favicon).
       includeAssets: [
         'favicon.ico',

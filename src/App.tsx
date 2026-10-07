@@ -4,6 +4,7 @@ import { AuthProvider } from '@/contexts/AuthContext'
 import { queryClient } from '@/lib/queryClient'
 import { AppRoutes } from '@/routes/AppRoutes'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
+import { PwaUpdateBanner } from '@/components/PwaUpdateBanner'
 
 export function App() {
   return (
@@ -12,6 +13,7 @@ export function App() {
         <AuthProvider>
           <BrowserRouter>
             <AppRoutes />
+            <PwaUpdateBanner />
           </BrowserRouter>
         </AuthProvider>
       </QueryClientProvider>

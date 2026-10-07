@@ -667,6 +667,23 @@ Se faltar atualização, considere a entrega incompleta.
 
 ## Changelog
 
+- **2026-10-07** — **Banner de atualização do PWA (v0.3.1).**
+
+  Troca `registerType: 'autoUpdate'` por `'prompt'` no `vite.config.ts`
+  + `injectRegister: null` pra que o hook `useRegisterSW` controle o
+  ciclo. Novo componente `src/components/PwaUpdateBanner.tsx`:
+  - Monta global em `App.tsx`, dentro do `BrowserRouter`.
+  - Enquanto `needRefresh = false`, não renderiza nada.
+  - Quando o browser detecta um `sw.js` novo, mostra banner fixo no
+    bottom com "Atualizar agora" (chama `updateServiceWorker(true)` →
+    `skipWaiting` + reload) e "×" pra dispensar.
+  - `onRegisteredSW` agenda `registration.update()` a cada 60min pra
+    pegar deploys em sessões longas; e mount dispara `.update()` 1x pra
+    pegar deploys ocorridos entre fechar e reabrir.
+  - Transição suave: o SW atual (autoUpdate) ainda tem `skipWaiting`,
+    então faz uma última atualização silenciosa pra instalar essa
+    versão. A partir dela, todos os deploys mostram o banner.
+
 - **2026-10-07** — **Suporte via tickets (v0.3.0).**
 
   Canal de suporte dentro do app, com thread user ↔ admin e notificação
