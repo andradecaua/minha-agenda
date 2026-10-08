@@ -667,6 +667,44 @@ Se faltar atualização, considere a entrega incompleta.
 
 ## Changelog
 
+- **2026-10-07** — **Subscription do team + quotas somadas (v0.3.7, migration 0034).**
+
+  Step 2c do refactor — o mais arriscado. Subscription deixa de ser
+  por usuário e passa a ser por equipe. Quotas (`max_services`,
+  `max_appointments_per_month`) somam a equipe inteira.
+
+  **DB (0034):**
+  - `subscriptions.team_id` adicionada (FK, cascade); backfill via
+    `team_members.user_id = subscriptions.user_id`; depois NOT NULL
+    + unique index trocando a unique antiga em `user_id`. `user_id`
+    continua como "owner at the time" pra debug/renewal reminders.
+  - `has_feature()`, `my_permissions()`, `my_plan()`,
+    `my_subscription_detail()` reescritas pra `s.team_id =
+    current_team_id()`.
+  - `my_usage()` reescrita: resolve TODOS os profiles do team e
+    conta services + appointments agregados.
+  - Triggers `enforce_services_quota` e `enforce_appointments_quota`
+    (0020) somam toda a equipe antes de barrar.
+  - `ensure_free_subscription(user_id)` resolve team do user antes
+    de criar subscription. Chamada por `handle_new_user` após
+    `provision_team_for_user` (ordem preservada em 0032).
+  - `cancel_my_subscription()` agora exige `is_team_owner()` do
+    caller. Member comum tenta cancelar → `forbidden_not_owner`.
+  - `activate_subscription_from_webhook(user_id, ...)` resolve
+    team e grava com unique por team. Webhook do MP não precisa
+    mudar (passa user_id como antes).
+  - `admin_set_user_plan(user_id, ...)` idem — admin seleciona user,
+    plano é aplicado ao team dele. Nova chave de erro `user_no_team`.
+  - RLS de `subscriptions` troca `subscriptions_self_select` por
+    `subscriptions_team_select` (member vê sub do team também).
+
+  **Frontend:**
+  - Nenhuma mudança de código obrigatória — RPCs mantêm assinatura
+    e shape JSON. SubscriptionPage e queries continuam funcionando.
+  - Member comum vai ver o botão "Cancelar" tentar e cair em
+    `forbidden_not_owner` — próximo step de UI (2f) deve esconder
+    o botão pra non-owner usando `useMyTeam` + checagem de role.
+
 - **2026-10-07** — **Portfolio compartilhado pela equipe (v0.3.6, migration 0033).**
 
   Step 2b do refactor. Portfólio agora pertence ao `team_id` em vez do
