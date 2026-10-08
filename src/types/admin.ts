@@ -26,6 +26,12 @@ export interface Plan {
   permissions: string[]
   max_services: number | null
   max_appointments_per_month: number | null
+  /**
+   * Quantidade total de membros aceitos na equipe (dono incluído).
+   * NULL = plano individual (sem conceito de equipe). N ≥ 1 = plano
+   * de equipe com N vagas. Quotas somam a equipe inteira.
+   */
+  max_team_members: number | null
   active: boolean
   created_at: string
   updated_at: string

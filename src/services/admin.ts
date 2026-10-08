@@ -35,6 +35,9 @@ export const ADMIN_ERROR_LABEL: Record<string, string> = {
   invalid_permission: 'Permissão desconhecida: confira os códigos no catálogo.',
   cannot_self_demote: 'Você não pode remover a si mesmo do grupo de administradores.',
   body_required: 'Escreva uma mensagem.',
+  invalid_team_cap: 'Tamanho da equipe inválido (precisa ser 1 ou mais).',
+  invalid_price_yearly: 'Preço anual inválido.',
+  code_in_use: 'Já existe um plano com esse código.',
 }
 
 type RpcResult<T> = ({ status: 'ok' } & T) | { status: 'error'; error: string }
@@ -176,6 +179,11 @@ export interface CreatePlanInput {
   permissions?: string[]
   max_services?: number | null
   max_appointments_per_month?: number | null
+  /**
+   * Vagas totais na equipe (dono incluído). `null`/ausente = plano
+   * individual (sem equipe). `N ≥ 1` = equipe com N vagas totais.
+   */
+  max_team_members?: number | null
   active?: boolean
 }
 
@@ -192,6 +200,7 @@ export async function createPlan(input: CreatePlanInput): Promise<string> {
     p_active: input.active ?? true,
     p_permissions: input.permissions ?? [],
     p_price_yearly_cents: input.price_yearly_cents ?? null,
+    p_max_team_members: input.max_team_members ?? null,
   })
   if (error) throw error
   const result = parseResult<{ plan_id: string }>(data)
@@ -216,18 +225,30 @@ export interface UpdatePlanInput {
   permissions?: string[]
   max_services?: number | null
   max_appointments_per_month?: number | null
+  /**
+   * Mesma semântica do price_yearly_cents: `undefined` = não altera;
+   * `number` = seta; `null` = volta a plano individual (RPC traduz
+   * pro sentinel -1 pra limpar).
+   */
+  max_team_members?: number | null
   active?: boolean
 }
 
 export async function updatePlan(input: UpdatePlanInput): Promise<void> {
-  // Sentinel pra limpar (ver 0025): -1 vira NULL no SQL; number real
-  // vira o novo preço; undefined vira NULL "não altera".
+  // Sentinel pra limpar (ver 0025 e 0031): -1 vira NULL no SQL;
+  // number real vira o novo valor; undefined vira NULL "não altera".
   const yearly =
     input.price_yearly_cents === undefined
       ? null
       : input.price_yearly_cents === null
         ? -1
         : input.price_yearly_cents
+  const teamCap =
+    input.max_team_members === undefined
+      ? null
+      : input.max_team_members === null
+        ? -1
+        : input.max_team_members
 
   const { data, error } = await supabase.rpc('admin_update_plan', {
     p_plan_id: input.plan_id,
@@ -241,6 +262,7 @@ export async function updatePlan(input: UpdatePlanInput): Promise<void> {
     p_active: input.active ?? null,
     p_permissions: input.permissions ?? null,
     p_price_yearly_cents: yearly,
+    p_max_team_members: teamCap,
   })
   if (error) throw error
   const result = parseResult<unknown>(data)

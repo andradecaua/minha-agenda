@@ -13,6 +13,12 @@ export interface MyPlan {
   permissions: PermissionCode[]
   max_services: number | null
   max_appointments_per_month: number | null
+  /**
+   * Tamanho máximo da equipe (dono incluído) permitido pelo plano.
+   * `null` = plano individual, não faz sentido falar de equipe.
+   * `N ≥ 1` = time com N vagas. Quotas são somadas pela equipe.
+   */
+  max_team_members: number | null
   /** Preço mensal do plano em centavos. Útil pro frontend decidir
    *  entre toggle mensal/anual sem round-trip extra. */
   plan_price_cents: number | null

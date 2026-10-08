@@ -667,6 +667,35 @@ Se faltar atualização, considere a entrega incompleta.
 
 ## Changelog
 
+- **2026-10-07** — **Config de plano de equipe (v0.3.4, migration 0031).**
+
+  Primeira etapa (só data model + admin UI) da feature de "plano por
+  equipe". Nenhuma lógica funcional ainda — serve pra admin já conseguir
+  cadastrar planos tipo "Pro Equipe 5" antes da gente implementar
+  teams/convites/RLS compartilhada numa migration separada.
+
+  **DB (0031):**
+  - `plans.max_team_members int null` com `check (>= 1)`. NULL = plano
+    individual (sem equipe). N ≥ 2 = equipe com N vagas totais (dono
+    incluído). N = 1 válido mas efetivamente igual a solo.
+  - `admin_create_plan` + `admin_update_plan` ganham `p_max_team_members`
+    no fim (mesma convenção: null = unchanged no update, -1 = sentinel
+    pra limpar).
+  - `my_plan()` expõe o novo campo pro frontend ler.
+
+  **Frontend:**
+  - `AdminPlansPage` → toggle "Plano de equipe" + input "vagas totais"
+    no form; card mostra badge "Equipe · N vagas" em azul quando aplicável.
+  - `Plan` type (`src/types/admin.ts`), `MyPlan` type
+    (`src/services/permissions.ts`), `CreatePlanInput`/`UpdatePlanInput`
+    e `listPublicPlans` todos propagam o novo campo.
+
+  **Semântica combinada com futuro:**
+  - Quotas (`max_services`, `max_appointments_per_month`) são SOMADAS
+    pela equipe inteira quando `max_team_members > 1`.
+  - Convite será por email, conta pré-criada esperando senha.
+  - Papéis: só `owner` + `member`.
+
 - **2026-10-07** — **Sessão única por usuário (v0.3.3, migration 0030).**
 
   Combate roubo de licença / compartilhamento de credencial. Um usuário

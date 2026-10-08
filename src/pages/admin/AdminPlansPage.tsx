@@ -162,6 +162,11 @@ export function AdminPlansPage() {
                   </div>
                 )}
                 <div className="flex flex-wrap gap-2 border-t pt-3 text-xs text-muted-foreground">
+                  {p.max_team_members !== null && p.max_team_members > 1 && (
+                    <span className="rounded-md bg-primary/10 px-2 py-0.5 font-medium text-primary">
+                      Equipe · {p.max_team_members} vagas
+                    </span>
+                  )}
                   {p.max_services !== null && <span>Serviços: {p.max_services}</span>}
                   {p.max_appointments_per_month !== null && (
                     <span>Agendamentos/mês: {p.max_appointments_per_month}</span>
@@ -280,6 +285,10 @@ function PlanFormDialog({ mode, plan, onClose, onSaved }: PlanFormDialogProps) {
     active: plan?.active ?? true,
     offerYearly: plan?.price_yearly_cents != null,
     price_yearly_cents: plan?.price_yearly_cents ?? 0,
+    // Equipe: toggle "plano de equipe?" + número de vagas. Default
+    // off (plano individual). Ligar transforma plano em time plan.
+    isTeamPlan: (plan?.max_team_members ?? 0) > 1,
+    max_team_members: plan?.max_team_members?.toString() ?? '',
   })
   const [permissions, setPermissions] = useState<Set<string>>(
     () => new Set(plan?.permissions ?? []),
@@ -309,6 +318,13 @@ function PlanFormDialog({ mode, plan, onClose, onSaved }: PlanFormDialogProps) {
       // `null` pro service — que, em update, vira o sentinel -1 pra
       // RPC limpar a coluna; em create, vira NULL de verdade.
       const yearlyPrice = form.offerYearly ? form.price_yearly_cents : null
+      // Equipe: mesma convenção. Toggle off → null (plano individual).
+      // Toggle on → número de vagas digitado (mínimo 2 valida no handler).
+      const teamCap = form.isTeamPlan
+        ? form.max_team_members
+          ? Number(form.max_team_members)
+          : null
+        : null
       const payload: CreatePlanInput = {
         code: form.code,
         name: form.name,
@@ -322,6 +338,7 @@ function PlanFormDialog({ mode, plan, onClose, onSaved }: PlanFormDialogProps) {
         max_appointments_per_month: form.max_appointments_per_month
           ? Number(form.max_appointments_per_month)
           : null,
+        max_team_members: teamCap,
         active: form.active,
       }
       if (mode === 'create') {
@@ -487,6 +504,58 @@ function PlanFormDialog({ mode, plan, onClose, onSaved }: PlanFormDialogProps) {
               placeholder="Vazio = sem limite"
             />
           </div>
+        </div>
+
+        {/* Plano de equipe: um bloco à parte, parecido com o anual.
+            Toggle off = plano individual. Ligado = portfolio único
+            compartilhado + agenda/serviços separados por membro, e
+            as quotas (serviços, agendamentos/mês) somam a equipe. */}
+        <div className="space-y-3 rounded-md border border-dashed border-input p-3">
+          <div className="flex items-start justify-between gap-3">
+            <div className="space-y-0.5">
+              <Label htmlFor="plan-team" className="cursor-pointer">
+                Plano de equipe
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Portfólio único compartilhado + agenda e serviços próprios
+                por membro. Limites acima passam a somar a equipe inteira.
+              </p>
+            </div>
+            <Switch
+              id="plan-team"
+              checked={form.isTeamPlan}
+              onCheckedChange={(v) =>
+                setForm({
+                  ...form,
+                  isTeamPlan: v,
+                  // Default razoável ao ligar: 2 vagas (owner + 1 convidado).
+                  max_team_members: v
+                    ? form.max_team_members || '2'
+                    : '',
+                })
+              }
+            />
+          </div>
+          {form.isTeamPlan && (
+            <div className="space-y-1.5">
+              <Label htmlFor="plan-team-cap">
+                Vagas totais (dono + convidados)
+              </Label>
+              <Input
+                id="plan-team-cap"
+                type="number"
+                min={2}
+                value={form.max_team_members}
+                onChange={(e) =>
+                  setForm({ ...form, max_team_members: e.target.value })
+                }
+                placeholder="Ex.: 5"
+              />
+              <p className="text-xs text-muted-foreground">
+                Mínimo 2 — abaixo disso use plano individual.
+              </p>
+            </div>
+          )}
         </div>
         <PermissionsPicker
           catalog={catalog}
