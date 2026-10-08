@@ -667,6 +667,45 @@ Se faltar atualização, considere a entrega incompleta.
 
 ## Changelog
 
+- **2026-10-07** — **Página pública com drill-down por profissional (v0.4.0).**
+
+  Step 2e (último do refactor "plano por equipe"). A página pública
+  `/p/<slug>` agora detecta se o profile pertence a uma equipe
+  multi-member e, se for a URL do OWNER, mostra um TeamOverview
+  listando todos os profissionais da equipe — exatamente o que o
+  dono do negócio compartilha ("escolha um profissional antes de
+  reservar"). Fluxo:
+  - `/p/<owner-slug>` + team.members > 1 → `TeamOverview` com cards
+    de cada pro (owner incluído, com badge "Dono").
+  - Cada card → `/p/<member-slug>` (direto no booking do pro).
+  - Card do próprio owner → `/p/<owner-slug>?book=1` (bypass do
+    overview pra forçar booking).
+  - `/p/<member-slug>` (member não-owner) → booking direto + um
+    breadcrumb discreto no topo "Faz parte da equipe X → Ver todos
+    os profissionais".
+  - Solo team (1 member) → comportamento original intocado.
+
+  **Frontend:**
+  - `src/services/public-profile.ts` — `PublicProfessional` ganha
+    campo `team: PublicTeamSummary | null` com `members[]` (owner
+    primeiro). Query extra pros team_members + profiles em paralelo.
+  - `src/pages/public/ProfessionalPage.tsx` — lê `useSearchParams`
+    pra `?book=1`, decide entre `TeamOverview` e página individual.
+    Novos componentes `TeamOverview` (hero + grid de cards +
+    portfolio compartilhado) e `TeamBreadcrumb`.
+
+  **Com isso o refactor Fase 2 inteiro está no ar:**
+  - Admin cria plano "Pro Equipe N" com `max_team_members ≥ 2`.
+  - Owner assina → entra em `/dashboard/equipe` → convida membros
+    por email.
+  - Convidado define senha em `/convite/<token>` e vira member.
+  - Portfolio é compartilhado; agenda/serviços/clientes continuam
+    por profissional.
+  - URL pública da equipe (`/p/<owner-slug>`) mostra a vitrine com
+    os profissionais; visitante clica num e cai no booking do pro.
+  - Quotas (`max_services`, `max_appointments_per_month`) somam a
+    equipe inteira.
+
 - **2026-10-07** — **TeamSettingsPage + remove/leave de membro (v0.3.9, migration 0036).**
 
   Step 2f do refactor. Nova página `/dashboard/equipe` (ícone `Users2`

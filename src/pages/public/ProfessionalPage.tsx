@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useParams, useSearchParams } from 'react-router-dom'
 import {
+  ArrowRight,
   CalendarCheck,
   Clock,
   MapPin,
@@ -8,6 +9,7 @@ import {
   Package,
   Phone,
   Scissors,
+  Users2,
   X,
 } from 'lucide-react'
 
@@ -18,10 +20,12 @@ import { formatCurrencyBRL, formatMinutesDuration } from '@/lib/utils'
 import { formatPhoneBR, isValidPhoneBR, telLink, waLinkBR } from '@/lib/phone'
 import { getIcon } from '@/lib/icons'
 import type { PortfolioItem, Product, Service } from '@/types/database'
+import type { PublicTeamSummary } from '@/services/public-profile'
 import { BookingFlow } from '@/pages/public/booking/BookingFlow'
 
 export function ProfessionalPage() {
   const { slug } = useParams<{ slug: string }>()
+  const [search] = useSearchParams()
   const { data, isLoading, isError, refetch } = usePublicProfessional(slug)
   const [bookingOpen, setBookingOpen] = useState(false)
 
@@ -47,12 +51,41 @@ export function ProfessionalPage() {
     return <PublicShell><NotFoundState slug={slug} /></PublicShell>
   }
 
-  const { profile, services, settings, portfolio, products } = data
+  const { profile, team, services, settings, portfolio, products } = data
   const bookingDisabled =
     !settings?.online_booking_enabled || services.length === 0
 
+  // Visita no slug do OWNER de uma equipe com múltiplos membros:
+  // mostra o overview "escolha um profissional" em vez do booking
+  // dele direto. Exceção: `?book=1` força o booking (usado quando
+  // o próprio owner clica no card dele no overview).
+  const isTeamOwnerLandingPage =
+    !!team &&
+    team.members.length > 1 &&
+    team.owner_user_id === profile.user_id &&
+    search.get('book') !== '1'
+
+  if (isTeamOwnerLandingPage) {
+    return (
+      <PublicShell>
+        <TeamOverview team={team!} portfolio={portfolio} />
+      </PublicShell>
+    )
+  }
+
+  const isInMultiTeam = !!team && team.members.length > 1
+
   return (
     <PublicShell>
+      {isInMultiTeam && (
+        <TeamBreadcrumb
+          teamName={team!.name}
+          ownerSlug={
+            team!.members.find((m) => m.role === 'owner')?.slug ?? team!.slug
+          }
+        />
+      )}
+
       <Hero
         avatarUrl={profile.avatar_url}
         name={profile.name}
@@ -200,6 +233,140 @@ function Avatar({ url, name }: { url: string | null; name: string }) {
   return (
     <div
       className="flex h-28 w-28 items-center justify-center rounded-full border-4 border-background bg-primary/10 text-3xl font-semibold text-primary shadow-xl sm:h-36 sm:w-36 sm:text-4xl lg:h-40 lg:w-40 lg:text-5xl"
+      aria-hidden="true"
+    >
+      {initials || '?'}
+    </div>
+  )
+}
+
+/* ============================================================
+ * EQUIPE — overview "pick a professional"
+ * ============================================================ */
+
+function TeamBreadcrumb({ teamName, ownerSlug }: { teamName: string; ownerSlug: string }) {
+  return (
+    <div className="border-b bg-muted/40">
+      <div className="mx-auto flex max-w-6xl items-center gap-2 px-4 py-2 text-xs text-muted-foreground sm:px-6 lg:px-8">
+        <Users2 className="h-3.5 w-3.5" aria-hidden="true" />
+        Faz parte da equipe{' '}
+        <Link to={`/p/${ownerSlug}`} className="font-medium text-foreground hover:underline">
+          {teamName}
+        </Link>
+        <ArrowRight className="h-3 w-3" aria-hidden="true" />
+        <Link to={`/p/${ownerSlug}`} className="hover:underline">
+          Ver todos os profissionais
+        </Link>
+      </div>
+    </div>
+  )
+}
+
+interface TeamOverviewProps {
+  team: PublicTeamSummary
+  portfolio: PortfolioItem[]
+}
+
+function TeamOverview({ team, portfolio }: TeamOverviewProps) {
+  return (
+    <>
+      <header className="relative overflow-hidden">
+        <div
+          className="absolute inset-x-0 top-0 h-64 bg-gradient-to-b from-primary/10 via-primary/5 to-transparent sm:h-72 lg:h-80"
+          aria-hidden="true"
+        />
+        <div className="relative mx-auto flex max-w-6xl flex-col items-center px-4 pt-12 pb-6 text-center sm:px-6 sm:pt-16 lg:px-8 lg:pt-20">
+          <div
+            className="flex h-20 w-20 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-xl sm:h-24 sm:w-24"
+            aria-hidden="true"
+          >
+            <Users2 className="h-10 w-10 sm:h-12 sm:w-12" />
+          </div>
+          <h1 className="mt-5 text-3xl font-semibold tracking-tight sm:text-4xl lg:text-5xl">
+            {team.name}
+          </h1>
+          <p className="mt-3 text-sm text-muted-foreground sm:text-base">
+            Escolha um profissional pra reservar.
+          </p>
+        </div>
+      </header>
+
+      <div className="mx-auto w-full max-w-6xl px-4 pb-24 sm:px-6 lg:px-8">
+        {portfolio.length > 0 && <PortfolioGallery items={portfolio} />}
+
+        <section className="pt-6 lg:pt-10">
+          <h2 className="mb-5 text-2xl font-semibold tracking-tight lg:text-3xl">
+            Profissionais
+          </h2>
+          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {team.members.map((m) => {
+              const isOwner = m.role === 'owner'
+              const href = isOwner ? `/p/${m.slug}?book=1` : `/p/${m.slug}`
+              return (
+                <li key={m.user_id}>
+                  <Link
+                    to={href}
+                    className="group flex h-full flex-col items-center rounded-xl border bg-background p-5 text-center transition-colors hover:border-primary/40 hover:bg-accent/40"
+                  >
+                    <ProAvatar name={m.name} url={m.avatar_url} />
+                    <div className="mt-3 flex items-center gap-2">
+                      <h3 className="font-medium">{m.name}</h3>
+                      {isOwner && (
+                        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                          Dono
+                        </span>
+                      )}
+                    </div>
+                    {m.city && (
+                      <p className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground">
+                        <MapPin className="h-3 w-3" aria-hidden="true" />
+                        {m.city}
+                      </p>
+                    )}
+                    {m.bio && (
+                      <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
+                        {m.bio}
+                      </p>
+                    )}
+                    <span className="mt-4 inline-flex items-center gap-1 text-xs font-medium text-primary group-hover:underline">
+                      Reservar com {m.name.split(' ')[0]}
+                      <ArrowRight className="h-3 w-3" aria-hidden="true" />
+                    </span>
+                  </Link>
+                </li>
+              )
+            })}
+          </ul>
+        </section>
+
+        <footer className="pt-10 text-center text-xs text-muted-foreground">
+          Agende com segurança · Minha Agenda
+        </footer>
+      </div>
+    </>
+  )
+}
+
+function ProAvatar({ name, url }: { name: string; url: string | null }) {
+  const initials = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase() ?? '')
+    .join('')
+  if (url) {
+    return (
+      <img
+        src={url}
+        alt=""
+        className="h-16 w-16 rounded-full border bg-muted object-cover"
+        loading="lazy"
+      />
+    )
+  }
+  return (
+    <div
+      className="flex h-16 w-16 items-center justify-center rounded-full border bg-primary/10 text-lg font-semibold text-primary"
       aria-hidden="true"
     >
       {initials || '?'}

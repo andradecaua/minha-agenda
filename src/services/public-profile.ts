@@ -7,8 +7,25 @@ import type {
   Service,
 } from '@/types/database'
 
+export interface PublicTeamSummary {
+  id: string
+  slug: string
+  name: string
+  owner_user_id: string
+  /**
+   * Profiles de todos os membros do time (owner incluído), ordenados
+   * com owner primeiro. Usado pra renderizar o "pick a professional"
+   * quando a equipe tem múltiplos membros.
+   */
+  members: Array<Pick<Profile, 'id' | 'user_id' | 'slug' | 'name' | 'bio' | 'avatar_url' | 'city'> & {
+    role: 'owner' | 'member'
+  }>
+}
+
 export interface PublicProfessional {
   profile: Profile
+  /** Equipe do profissional. Sempre presente (todo profile tem solo team). */
+  team: PublicTeamSummary | null
   settings: BookingSettings | null
   services: Service[]
   portfolio: PortfolioItem[]
@@ -41,10 +58,65 @@ export async function getPublicProfessional(
   // team do profile via team_members pra consultar na coluna certa.
   const { data: teamMember } = await supabase
     .from('team_members')
-    .select('team_id')
+    .select('team_id, role')
     .eq('user_id', profile.user_id)
     .maybeSingle()
   const teamId = (teamMember?.team_id as string | undefined) ?? null
+
+  // Carrega team completo (teams + todos os membros com profile).
+  // Em paralelo com o resto; team_members tem SELECT público (0032).
+  let publicTeam: PublicTeamSummary | null = null
+  if (teamId) {
+    const [{ data: teamRow }, { data: memberRows }] = await Promise.all([
+      supabase
+        .from('teams')
+        .select('id, slug, name, owner_user_id')
+        .eq('id', teamId)
+        .maybeSingle(),
+      supabase
+        .from('team_members')
+        .select('user_id, role')
+        .eq('team_id', teamId),
+    ])
+    if (teamRow && memberRows && memberRows.length > 0) {
+      const userIds = memberRows.map((r) => r.user_id as string)
+      const { data: memberProfiles } = await supabase
+        .from('profiles')
+        .select('id, user_id, slug, name, bio, avatar_url, city')
+        .in('user_id', userIds)
+      const profilesByUser = new Map(
+        (memberProfiles ?? []).map((p) => [p.user_id as string, p]),
+      )
+      const members = memberRows
+        .map((m) => {
+          const p = profilesByUser.get(m.user_id as string)
+          if (!p) return null
+          return {
+            id: p.id as string,
+            user_id: p.user_id as string,
+            slug: p.slug as string,
+            name: p.name as string,
+            bio: (p.bio as string | null) ?? null,
+            avatar_url: (p.avatar_url as string | null) ?? null,
+            city: (p.city as string | null) ?? null,
+            role: m.role as 'owner' | 'member',
+          }
+        })
+        .filter((v): v is NonNullable<typeof v> => v !== null)
+        .sort((a, b) => {
+          // Owner primeiro, depois ordem alfabética.
+          if (a.role !== b.role) return a.role === 'owner' ? -1 : 1
+          return a.name.localeCompare(b.name)
+        })
+      publicTeam = {
+        id: teamRow.id as string,
+        slug: teamRow.slug as string,
+        name: teamRow.name as string,
+        owner_user_id: teamRow.owner_user_id as string,
+        members,
+      }
+    }
+  }
 
   const [settingsResult, servicesResult, portfolioResult, productsResult] =
     await Promise.all([
@@ -82,6 +154,7 @@ export async function getPublicProfessional(
 
   return {
     profile: profile as Profile,
+    team: publicTeam,
     settings: (settingsResult.data as BookingSettings | null) ?? null,
     services: (servicesResult.data ?? []) as Service[],
     portfolio: (portfolioResult.data ?? []) as PortfolioItem[],
