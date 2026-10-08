@@ -2,13 +2,18 @@ import { supabase } from '@/lib/supabase'
 import { deleteImage, uploadImage } from '@/services/storage'
 import type { PortfolioItem } from '@/types/database'
 
+/**
+ * Portfólio é COMPARTILHADO pela equipe (migration 0033). Qualquer
+ * membro do time lista/adiciona/edita/remove. `professional_id`
+ * continua gravado como "quem subiu" pra atribuição futura.
+ */
 export async function listPortfolio(
-  professionalId: string,
+  teamId: string,
 ): Promise<PortfolioItem[]> {
   const { data, error } = await supabase
     .from('portfolio_items')
     .select('*')
-    .eq('professional_id', professionalId)
+    .eq('team_id', teamId)
     .order('position', { ascending: true })
     .order('created_at', { ascending: false })
   if (error) throw error
@@ -22,16 +27,19 @@ export interface AddPortfolioInput {
 }
 
 export async function addPortfolioItem(
-  professionalId: string,
+  teamId: string,
+  uploaderProfessionalId: string,
   input: AddPortfolioInput,
 ): Promise<PortfolioItem> {
-  const { path, publicUrl } = await uploadImage('portfolio', professionalId, input.file)
+  // Upload sob o path `portfolio/{team_id}/<rand>.ext` — storage
+  // policy `portfolio_team_insert` (0033) exige folder == team_id.
+  const { path, publicUrl } = await uploadImage('portfolio', teamId, input.file)
 
-  // Próxima position: max(position)+1. Falhando a consulta, usa 0.
+  // Próxima position dentro do TIME (não do profissional).
   const { data: last } = await supabase
     .from('portfolio_items')
     .select('position')
-    .eq('professional_id', professionalId)
+    .eq('team_id', teamId)
     .order('position', { ascending: false })
     .limit(1)
     .maybeSingle()
@@ -41,7 +49,8 @@ export async function addPortfolioItem(
   const { data, error } = await supabase
     .from('portfolio_items')
     .insert({
-      professional_id: professionalId,
+      team_id: teamId,
+      professional_id: uploaderProfessionalId,
       image_url: publicUrl,
       storage_path: path,
       title: input.title?.trim() || null,
@@ -79,10 +88,8 @@ export async function updatePortfolioItem(
 }
 
 export async function deletePortfolioItem(item: PortfolioItem): Promise<void> {
-  // O blob é apagado por trigger (`portfolio_items_cleanup_blob`,
-  // migration 0029) na mesma transação do DELETE. Não precisamos
-  // mais do `supabase.storage.remove()` daqui — ele silenciava erros
-  // e deixava blobs órfãos no bucket.
+  // Trigger `portfolio_items_cleanup_blob` (migration 0029) apaga o
+  // blob na mesma transação. Nada de storage.remove() daqui.
   const { error } = await supabase
     .from('portfolio_items')
     .delete()

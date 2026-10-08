@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useMyProfile } from '@/hooks/queries/useMyProfile'
+import { useMyTeam } from '@/hooks/queries/useMyTeam'
 import { portfolioQueryKey, usePortfolio } from '@/hooks/queries/usePortfolio'
 import {
   addPortfolioItem,
@@ -23,7 +24,8 @@ import { cn } from '@/lib/utils'
 export function PortfolioPage() {
   const queryClient = useQueryClient()
   const { data: profile } = useMyProfile()
-  const { data: items, isLoading } = usePortfolio(profile?.id)
+  const { data: team } = useMyTeam()
+  const { data: items, isLoading } = usePortfolio(team?.id)
 
   const [pending, setPending] = useState<File | null>(null)
   const [pendingTitle, setPendingTitle] = useState('')
@@ -33,13 +35,13 @@ export function PortfolioPage() {
   const [feedback, setFeedback] = useState<string | null>(null)
 
   function invalidate() {
-    if (profile) queryClient.invalidateQueries({ queryKey: portfolioQueryKey(profile.id) })
+    if (team) queryClient.invalidateQueries({ queryKey: portfolioQueryKey(team.id) })
   }
 
   const addMutation = useMutation({
     mutationFn: async () => {
-      if (!profile || !pending) throw new Error('nada para enviar')
-      return addPortfolioItem(profile.id, {
+      if (!profile || !team || !pending) throw new Error('nada para enviar')
+      return addPortfolioItem(team.id, profile.id, {
         file: pending,
         title: pendingTitle,
         description: pendingDesc,

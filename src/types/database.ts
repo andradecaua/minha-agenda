@@ -99,6 +99,9 @@ export interface AppointmentService {
 
 export interface PortfolioItem {
   id: string
+  /** Equipe dona do item (portfólio é compartilhado — ver 0033). */
+  team_id: string
+  /** Quem subiu — fica como atribuição de autoria, não controla acesso. */
   professional_id: string
   image_url: string
   storage_path: string

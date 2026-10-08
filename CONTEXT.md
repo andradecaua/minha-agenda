@@ -667,6 +667,45 @@ Se faltar atualização, considere a entrega incompleta.
 
 ## Changelog
 
+- **2026-10-07** — **Portfolio compartilhado pela equipe (v0.3.6, migration 0033).**
+
+  Step 2b do refactor. Portfólio agora pertence ao `team_id` em vez do
+  `professional_id`. Qualquer membro do time lista/adiciona/edita/remove
+  as mesmas fotos. `professional_id` continua como atribuição de autoria
+  (quem subiu) mas não controla acesso.
+
+  **DB (0033):**
+  - `portfolio_items.team_id` adicionada (FK → teams, cascade delete)
+    com backfill via `profiles.user_id` → `team_members.team_id` e
+    depois NOT NULL.
+  - Novo índice `portfolio_items_team_pos_idx (team_id, position,
+    created_at)`.
+  - RLS: policies `portfolio_owner_*` dropadas; `portfolio_team_*`
+    novas usam `team_id = current_team_id()` + `has_feature(
+    'portfolio.manage')`. Public select continua intacto.
+  - Storage (`portfolio` bucket): adicionadas policies
+    `portfolio_team_insert/update/delete` com check de folder ==
+    `current_team_id()`. Legacy owner-folder policies ficam intactas
+    pros uploads antigos continuarem gerenciáveis (trigger 0029
+    cobre cleanup via service role de qualquer forma).
+
+  **Frontend:**
+  - `src/services/portfolio.ts` — assinatura mudou: `listPortfolio
+    (teamId)`, `addPortfolioItem(teamId, uploaderProfessionalId,
+    input)`. Upload passa a usar `{team_id}/<rand>.ext` como path.
+  - `src/hooks/queries/usePortfolio.ts` — param renomeado pra `teamId`.
+  - `src/pages/dashboard/portfolio/PortfolioPage.tsx` — usa
+    `useMyTeam()` + `useMyProfile()`; passa team.id e profile.id.
+  - `src/services/public-profile.ts` — resolve team_id do profile via
+    `team_members` antes de consultar portfolio.
+  - `src/types/database.ts:PortfolioItem` ganha `team_id`.
+
+  **O que ainda não mudou (vem em steps futuros):**
+  - UI pública (`/p/<slug>`) continua mostrando o portfólio do
+    "profissional" via resolução do team dele. Drill-down pra equipe
+    com múltiplos membros chega no Step 2e.
+  - Subscription do team é o Step 2c (migration 0034).
+
 - **2026-10-07** — **Data model de equipes (v0.3.5, migration 0032).**
 
   Step 2a do refactor "plano por equipe" — só o DATA MODEL. Nenhuma

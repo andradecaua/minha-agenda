@@ -37,6 +37,15 @@ export async function getPublicProfessional(
   if (profileErr) throw profileErr
   if (!profile) return null
 
+  // Portfolio é compartilhado pela equipe (migration 0033). Resolve o
+  // team do profile via team_members pra consultar na coluna certa.
+  const { data: teamMember } = await supabase
+    .from('team_members')
+    .select('team_id')
+    .eq('user_id', profile.user_id)
+    .maybeSingle()
+  const teamId = (teamMember?.team_id as string | undefined) ?? null
+
   const [settingsResult, servicesResult, portfolioResult, productsResult] =
     await Promise.all([
       supabase
@@ -50,12 +59,14 @@ export async function getPublicProfessional(
         .eq('professional_id', profile.id)
         .eq('active', true)
         .order('price_cents', { ascending: true }),
-      supabase
-        .from('portfolio_items')
-        .select('*')
-        .eq('professional_id', profile.id)
-        .order('position', { ascending: true })
-        .order('created_at', { ascending: false }),
+      teamId
+        ? supabase
+            .from('portfolio_items')
+            .select('*')
+            .eq('team_id', teamId)
+            .order('position', { ascending: true })
+            .order('created_at', { ascending: false })
+        : Promise.resolve({ data: [] as unknown[], error: null }),
       supabase
         .from('products')
         .select('*')

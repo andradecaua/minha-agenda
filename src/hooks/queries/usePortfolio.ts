@@ -1,16 +1,16 @@
 import { useQuery } from '@tanstack/react-query'
 import { listPortfolio } from '@/services/portfolio'
 
-export const portfolioQueryKey = (professionalId: string | undefined) =>
-  ['portfolio', professionalId] as const
+export const portfolioQueryKey = (teamId: string | undefined) =>
+  ['portfolio', teamId] as const
 
-export function usePortfolio(professionalId: string | undefined) {
+export function usePortfolio(teamId: string | undefined) {
   return useQuery({
-    queryKey: portfolioQueryKey(professionalId),
+    queryKey: portfolioQueryKey(teamId),
     queryFn: () => {
-      if (!professionalId) throw new Error('professionalId ausente')
-      return listPortfolio(professionalId)
+      if (!teamId) throw new Error('teamId ausente')
+      return listPortfolio(teamId)
     },
-    enabled: !!professionalId,
+    enabled: !!teamId,
   })
 }
