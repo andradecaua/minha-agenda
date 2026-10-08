@@ -667,6 +667,43 @@ Se faltar atualização, considere a entrega incompleta.
 
 ## Changelog
 
+- **2026-10-07** — **Data model de equipes (v0.3.5, migration 0032).**
+
+  Step 2a do refactor "plano por equipe" — só o DATA MODEL. Nenhuma
+  feature funcional ainda; serve pra 0033 (portfolio compartilhado)
+  e 0034 (subscription do team) consumirem.
+
+  **DB (0032):**
+  - `teams (id, slug unique, name, owner_user_id)` + `team_members
+    (team_id, user_id, role: owner|member, joined_at)` com unique
+    em `user_id` (um user = um team só).
+  - Helpers `current_team_id()` e `is_team_owner(team_id)` SECURITY
+    DEFINER no padrão `current_professional_id()`.
+  - `provision_team_for_user(user_id)` idempotente — cria solo team
+    com slug + nome herdados do profile e member role=owner.
+  - `handle_new_user` passa a chamar `provision_team_for_user` logo
+    após `provision_profile_for_user` (ordem importa — team lê slug/
+    name do profile).
+  - Backfill: cada profile sem team ganha um team solo via loop
+    plpgsql tolerante a falha por linha.
+  - RLS: `teams` SELECT público (precisa pra `/p/<team-slug>`) +
+    UPDATE só owner; `team_members` SELECT público (pra listar
+    membros na página pública). Writes via SECURITY DEFINER só.
+
+  **Frontend (ainda inerte):**
+  - `src/services/teams.ts` — `getMyTeam()`, `listTeamMembers()`,
+    `updateTeamName()`. A listagem de membros faz join manual com
+    profiles porque `team_members.user_id` referencia `auth.users`
+    (não `profiles` direto) e o PostgREST não infere o relacionamento.
+  - `src/hooks/queries/useMyTeam.ts` — `useMyTeam()` e
+    `useTeamMembers()`.
+  - Zero UI nova neste commit — serviços ficam prontos pra consumidor.
+
+  **Próximos passos (migrations futuras):**
+  - 0033: `portfolio_items.team_id` + RLS compartilhada.
+  - 0034: `subscriptions.team_id` + quotas somadas pelo team.
+  - 0035: convites por email + `accept_team_invite()`.
+
 - **2026-10-07** — **Config de plano de equipe (v0.3.4, migration 0031).**
 
   Primeira etapa (só data model + admin UI) da feature de "plano por
