@@ -667,6 +667,59 @@ Se faltar atualização, considere a entrega incompleta.
 
 ## Changelog
 
+- **2026-10-07** — **Convites de equipe por email (v0.3.8, migration 0035).**
+
+  Step 2d do refactor. Owner digita email → sistema cria convite com
+  token UUID + conta pré-criada via Admin API. Convidado recebe email
+  com link `/convite/<token>`, define senha e entra no time.
+
+  **DB (0035):**
+  - `team_invites (id, team_id, email, token, status, expires_at,
+    accepted_at, accepted_by)` com unique parcial em
+    `(team_id, lower(email)) WHERE status='pending'` e unique em `token`.
+    Expira em 7 dias por default.
+  - RLS: só owner lê os convites do próprio time; writes via SECURITY
+    DEFINER.
+  - RPCs:
+    - `create_team_invite(email)` — owner-only. Valida email, checa
+      capacidade do plano (`max_team_members`), checa que email não
+      é já member nem já tem convite pendente. Retorna `{invite_id,
+      token}`.
+    - `resolve_team_invite(token)` — PÚBLICO (anon + authenticated).
+      Retorna nome do time, email convidado, expiração. Usado pela
+      página de aceite antes de pedir senha.
+    - `revoke_team_invite(invite_id)` — owner-only.
+    - `accept_team_invite_server(token, user_id)` — service-role-only.
+      Chamada pela edge function `accept-team-invite`. Valida tudo
+      de novo (defesa em profundidade), apaga o solo team do user se
+      aplicável, insere `team_members` com role=member, marca invite
+      como accepted.
+
+  **Edge functions:**
+  - `supabase/functions/send-team-invite/index.ts` — pré-cria auth.user
+    via `admin.createUser({email_confirm: true})` se o email ainda não
+    existe (trigger `handle_new_user` cria profile + solo team + free
+    sub). Dispara email SMTP via `_shared/email.ts` com link
+    `${SITE_URL}/convite/<token>`.
+  - `supabase/functions/accept-team-invite/index.ts` — resolve invite,
+    seta senha via `admin.updateUserById`, chama
+    `accept_team_invite_server`. Retorna `{email, team_id}` pro
+    frontend fazer signIn automático.
+
+  **Frontend:**
+  - `src/services/team-invites.ts` — `createInvite`, `resolveInvite`,
+    `acceptInvite`, `revokeInvite`, `listTeamInvites`.
+  - `src/pages/public/AcceptInvitePage.tsx` em `/convite/:token` —
+    resolve, pede senha + confirmação, aceita, faz signIn automático,
+    redireciona pra `/dashboard`.
+  - Rota registrada em `AppRoutes.tsx` FORA do GuestOnlyRoute (user
+    logado em outro device pode aceitar daqui — edge troca a senha
+    de qualquer forma).
+
+  **UI de "convidar membro" vem no Step 2f** (`TeamSettingsPage` em
+  `/dashboard/equipe`). Até lá dá pra testar criando um invite via
+  SQL Editor e seguindo o link gerado.
+
 - **2026-10-07** — **Subscription do team + quotas somadas (v0.3.7, migration 0034).**
 
   Step 2c do refactor — o mais arriscado. Subscription deixa de ser

@@ -112,6 +112,11 @@ const AppointmentDetailPublicPage = lazy(() =>
     default: m.AppointmentDetailPublicPage,
   })),
 )
+const AcceptInvitePage = lazy(() =>
+  import('@/pages/public/AcceptInvitePage').then((m) => ({
+    default: m.AcceptInvitePage,
+  })),
+)
 // Landing é lazy — visitante que entra direto em outra rota não baixa.
 // Renderizada em `/` só para visitantes anônimos vindos da web: usuário
 // com sessão vai direto pro /dashboard, e PWA instalada (standalone)
@@ -221,6 +226,11 @@ export function AppRoutes() {
           <Route path="/p/:slug" element={<ProfessionalPage />} />
           <Route path="/p/:slug/a/:token" element={<AppointmentDetailPublicPage />} />
         </Route>
+
+        {/* `/convite/:token` fica FORA do GuestOnlyRoute: o user pode
+            já estar logado em outro device e aceitar o convite daqui
+            (a edge function troca a senha e move pro novo team). */}
+        <Route path="/convite/:token" element={<AcceptInvitePage />} />
 
         <Route element={<ProtectedRoute />}>
           {/* Checkout de assinatura — tela de "loading" full-screen que
