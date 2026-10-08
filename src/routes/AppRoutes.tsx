@@ -97,6 +97,11 @@ const SupportPage = lazy(() =>
     default: m.SupportPage,
   })),
 )
+const TeamSettingsPage = lazy(() =>
+  import('@/pages/dashboard/team/TeamSettingsPage').then((m) => ({
+    default: m.TeamSettingsPage,
+  })),
+)
 const SupportTicketPage = lazy(() =>
   import('@/pages/dashboard/support/SupportTicketPage').then((m) => ({
     default: m.SupportTicketPage,
@@ -269,6 +274,7 @@ export function AppRoutes() {
             </Route>
             <Route path="/dashboard/suporte" element={<SupportPage />} />
             <Route path="/dashboard/suporte/:id" element={<SupportTicketPage />} />
+            <Route path="/dashboard/equipe" element={<TeamSettingsPage />} />
             <Route path="/dashboard/configuracoes" element={<SettingsLayout />}>
               <Route index element={<SettingsIndexPage />} />
               <Route path="perfil" element={<ProfilePage />} />

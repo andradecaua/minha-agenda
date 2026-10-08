@@ -99,3 +99,46 @@ export async function updateTeamName(teamId: string, name: string): Promise<void
     .eq('id', teamId)
   if (error) throw error
 }
+
+type RpcResult<T> = ({ status: 'ok' } & T) | { status: 'error'; error: string }
+
+const TEAM_ERROR_LABEL: Record<string, string> = {
+  unauthorized: 'Faça login novamente.',
+  no_team: 'Você não está em uma equipe.',
+  forbidden_not_owner: 'Só o dono da equipe pode fazer isso.',
+  cannot_remove_self: 'Você não pode remover a si mesmo.',
+  not_in_team: 'Esse membro não está na sua equipe.',
+  owner_cannot_leave: 'Como dono, você precisa transferir o papel antes de sair.',
+}
+
+function throwOnTeamError<T>(data: unknown): { status: 'ok' } & T {
+  if (!data || typeof data !== 'object' || !('status' in data)) {
+    throw new Error('Resposta inválida do servidor.')
+  }
+  const result = data as RpcResult<T>
+  if (result.status === 'error') {
+    throw new Error(TEAM_ERROR_LABEL[result.error] ?? 'Operação não permitida.')
+  }
+  return result
+}
+
+/**
+ * Owner remove um membro da equipe. User removido ganha um novo
+ * solo team com plano free automaticamente (migration 0036).
+ */
+export async function removeTeamMember(userId: string): Promise<void> {
+  const { data, error } = await supabase.rpc('remove_team_member', {
+    p_user_id: userId,
+  })
+  if (error) throw error
+  throwOnTeamError<unknown>(data)
+}
+
+/**
+ * Member sai da própria equipe. Owner não pode usar.
+ */
+export async function leaveTeam(): Promise<void> {
+  const { data, error } = await supabase.rpc('leave_team')
+  if (error) throw error
+  throwOnTeamError<unknown>(data)
+}

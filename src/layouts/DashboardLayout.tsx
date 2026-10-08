@@ -13,6 +13,7 @@ import {
   Settings,
   ShieldCheck,
   Users,
+  Users2,
   X,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
@@ -48,6 +49,7 @@ const NAV_ITEMS: NavItem[] = [
     icon: Package,
     permission: PERMISSIONS.PRODUCTS_MANAGE,
   },
+  { to: '/dashboard/equipe', label: 'Equipe', icon: Users2 },
   { to: '/dashboard/suporte', label: 'Suporte', icon: LifeBuoy },
   { to: '/dashboard/configuracoes', label: 'Configurações', icon: Settings },
 ]

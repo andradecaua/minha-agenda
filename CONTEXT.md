@@ -667,6 +667,42 @@ Se faltar atualização, considere a entrega incompleta.
 
 ## Changelog
 
+- **2026-10-07** — **TeamSettingsPage + remove/leave de membro (v0.3.9, migration 0036).**
+
+  Step 2f do refactor. Nova página `/dashboard/equipe` (ícone `Users2`
+  na sidebar) é o centro de controle de equipe:
+  - Header com nome do time + "N de M vagas em uso".
+  - Lista de membros com badge "Dono" + botão "Remover" (owner-only).
+  - Botão "Convidar" (owner-only) com modal (email → dispara RPC
+    `create_team_invite` → edge envia email).
+  - Lista de convites pendentes com botão de cancelar.
+  - Seção "Sair da equipe" só pra members.
+  - Nudge "faça upgrade" quando o plano não tem `max_team_members ≥ 2`.
+
+  **DB (migration 0036):**
+  - RPC `remove_team_member(user_id)` — owner remove member. Atômica:
+    deleta `team_members` + `provision_team_for_user(member)` cria
+    solo team novo + `ensure_free_subscription`.
+  - RPC `leave_team()` — member sai sozinho. Mesma lógica atômica.
+    Owner recebe `owner_cannot_leave`.
+  - Member removido fica com services/clients/appointments (são por
+    `professional_id`). Portfolio shared fica com o time (fotos que
+    ele subiu continuam lá).
+
+  **Frontend:**
+  - `src/services/teams.ts` — adiciona `removeTeamMember` e
+    `leaveTeam` + dict de erros em pt-BR.
+  - `src/hooks/queries/useTeamInvites.ts` — hook pra listar invites
+    pendentes do time (RLS owner-only).
+  - `src/pages/dashboard/team/TeamSettingsPage.tsx` — página inteira.
+  - `DashboardLayout.NAV_ITEMS` — item "Equipe" com `Users2`.
+  - Rota em `AppRoutes.tsx`.
+
+  **Agora dá pra fluxo end-to-end:** owner com plano de equipe → vai
+  em `/dashboard/equipe` → convida → convidado recebe email → aceita
+  → vira member. Falta só o `/p/<team-slug>` (Step 2e) pra mostrar
+  equipe pública com drill-down por profissional.
+
 - **2026-10-07** — **Convites de equipe por email (v0.3.8, migration 0035).**
 
   Step 2d do refactor. Owner digita email → sistema cria convite com
