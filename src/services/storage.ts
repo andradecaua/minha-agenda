@@ -4,9 +4,15 @@ export const AVATAR_MAX_BYTES = 2 * 1024 * 1024
 export const PORTFOLIO_MAX_BYTES = 5 * 1024 * 1024
 export const PRODUCTS_MAX_BYTES = 5 * 1024 * 1024
 export const SERVICES_MAX_BYTES = 5 * 1024 * 1024
+export const BACKGROUNDS_MAX_BYTES = 5 * 1024 * 1024
 export const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const
 
-export type UploadBucket = 'avatars' | 'portfolio' | 'products' | 'services'
+export type UploadBucket =
+  | 'avatars'
+  | 'portfolio'
+  | 'products'
+  | 'services'
+  | 'backgrounds'
 
 export interface UploadResult {
   path: string
@@ -45,6 +51,7 @@ const MAX_BY_BUCKET: Record<UploadBucket, number> = {
   portfolio: PORTFOLIO_MAX_BYTES,
   products: PRODUCTS_MAX_BYTES,
   services: SERVICES_MAX_BYTES,
+  backgrounds: BACKGROUNDS_MAX_BYTES,
 }
 
 export async function uploadImage(

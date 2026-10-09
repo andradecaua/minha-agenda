@@ -13,7 +13,9 @@ import { PhoneInput } from '@/components/ui/phone-input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { AvatarUpload } from '@/components/ui/avatar-upload'
 import { useMyProfile } from '@/hooks/queries/useMyProfile'
-import { useMyTeam, useTeamMembers } from '@/hooks/queries/useMyTeam'
+import { myTeamKey, useMyTeam, useTeamMembers } from '@/hooks/queries/useMyTeam'
+import { usePermissions } from '@/hooks/usePermissions'
+import { PERMISSIONS } from '@/lib/permissions'
 import {
   SLUG_REGEX,
   isSlugAvailable,
@@ -21,6 +23,9 @@ import {
   type ProfileUpdate,
 } from '@/services/profiles'
 import { removeAvatar, replaceAvatar } from '@/services/avatar'
+import { updateTeamBackground } from '@/services/teams'
+import { deleteImage, uploadImage, UploadValidationError } from '@/services/storage'
+import { BackgroundUpload } from '@/components/ui/background-upload'
 import { isValidPhoneBR, normalizePhone } from '@/lib/phone'
 
 const profileSchema = z.object({
@@ -47,6 +52,8 @@ export function ProfilePage() {
   const { data: profile, isLoading } = useMyProfile()
   const { data: team } = useMyTeam()
   const { data: teamMembers } = useTeamMembers(team?.id)
+  const { can } = usePermissions()
+  const canSetBackground = can(PERMISSIONS.PROFILE_BACKGROUND)
 
   const [savedAt, setSavedAt] = useState<Date | null>(null)
   const [serverError, setServerError] = useState<string | null>(null)
@@ -218,6 +225,44 @@ export function ProfilePage() {
     })
   }
 
+  async function handleBackgroundUpload(file: File) {
+    if (!team) throw new Error('Equipe não carregada.')
+    try {
+      const { path, publicUrl } = await uploadImage('backgrounds', team.id, file)
+      const oldPath = team.background_storage_path
+      await updateTeamBackground(publicUrl, path)
+      queryClient.setQueryData(myTeamKey(profile!.user_id), {
+        ...team,
+        background_url: publicUrl,
+        background_storage_path: path,
+      })
+      void queryClient.invalidateQueries({ queryKey: ['public-professional'] })
+      // Limpa o blob antigo depois do sucesso da RPC. Falha aqui =
+      // órfão; não propaga pra UI porque o novo já está salvo.
+      if (oldPath && oldPath !== path) {
+        void deleteImage('backgrounds', oldPath).catch(() => {})
+      }
+    } catch (err) {
+      if (err instanceof UploadValidationError) throw new Error(err.message)
+      throw err
+    }
+  }
+
+  async function handleBackgroundRemove() {
+    if (!team) return
+    const oldPath = team.background_storage_path
+    await updateTeamBackground(null, null)
+    queryClient.setQueryData(myTeamKey(profile!.user_id), {
+      ...team,
+      background_url: null,
+      background_storage_path: null,
+    })
+    void queryClient.invalidateQueries({ queryKey: ['public-professional'] })
+    if (oldPath) {
+      void deleteImage('backgrounds', oldPath).catch(() => {})
+    }
+  }
+
   return (
     <div className="space-y-6">
       <Card>
@@ -236,6 +281,25 @@ export function ProfilePage() {
           />
         </CardContent>
       </Card>
+
+      {team && canSetBackground && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Plano de fundo</CardTitle>
+            <CardDescription>
+              Imagem exibida atrás da foto na sua página pública. Ótima pra
+              reforçar a identidade visual do seu trabalho.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <BackgroundUpload
+              value={team.background_url}
+              onUpload={handleBackgroundUpload}
+              onRemove={handleBackgroundRemove}
+            />
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

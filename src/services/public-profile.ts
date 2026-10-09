@@ -12,6 +12,8 @@ export interface PublicTeamSummary {
   slug: string
   name: string
   owner_user_id: string
+  /** Plano de fundo da página pública (0039). */
+  background_url: string | null
   /**
    * Profiles de todos os membros do time (owner incluído), ordenados
    * com owner primeiro. Usado pra renderizar o "pick a professional"
@@ -70,7 +72,7 @@ export async function getPublicProfessional(
     const [{ data: teamRow }, { data: memberRows }] = await Promise.all([
       supabase
         .from('teams')
-        .select('id, slug, name, owner_user_id')
+        .select('id, slug, name, owner_user_id, background_url')
         .eq('id', teamId)
         .maybeSingle(),
       supabase
@@ -113,6 +115,7 @@ export async function getPublicProfessional(
         slug: teamRow.slug as string,
         name: teamRow.name as string,
         owner_user_id: teamRow.owner_user_id as string,
+        background_url: (teamRow.background_url as string | null) ?? null,
         members,
       }
     }

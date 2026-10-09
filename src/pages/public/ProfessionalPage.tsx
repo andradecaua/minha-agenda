@@ -113,6 +113,7 @@ export function ProfessionalPage() {
         bio={profile.bio}
         city={profile.city}
         phone={profile.phone}
+        backgroundUrl={team?.background_url ?? null}
       />
 
       <div className="mx-auto w-full max-w-6xl px-4 pb-32 sm:px-6 lg:px-8">
@@ -206,18 +207,34 @@ interface HeroProps {
   bio: string | null
   city: string | null
   phone: string | null
+  backgroundUrl: string | null
 }
 
-function Hero({ avatarUrl, name, bio, city, phone }: HeroProps) {
+function Hero({ avatarUrl, name, bio, city, phone, backgroundUrl }: HeroProps) {
   const phoneValid = !!phone && isValidPhoneBR(phone)
 
   return (
     <header className="relative overflow-hidden">
-      {/* Faixa de fundo decorativa — full-bleed */}
-      <div
-        className="absolute inset-x-0 top-0 h-64 bg-gradient-to-b from-primary/10 via-primary/5 to-transparent sm:h-72 lg:h-80"
-        aria-hidden="true"
-      />
+      {/* Faixa de fundo: imagem do time quando configurada, senão gradient. */}
+      {backgroundUrl ? (
+        <div
+          className="absolute inset-x-0 top-0 h-64 overflow-hidden sm:h-72 lg:h-80"
+          aria-hidden="true"
+        >
+          <img
+            src={backgroundUrl}
+            alt=""
+            className="h-full w-full object-cover"
+            loading="eager"
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-background/30 via-background/60 to-background" />
+        </div>
+      ) : (
+        <div
+          className="absolute inset-x-0 top-0 h-64 bg-gradient-to-b from-primary/10 via-primary/5 to-transparent sm:h-72 lg:h-80"
+          aria-hidden="true"
+        />
+      )}
 
       <div className="relative mx-auto flex max-w-6xl flex-col items-center px-4 pt-12 pb-8 text-center sm:px-6 sm:pt-16 lg:px-8 lg:pt-20 lg:pb-10">
         <Avatar url={avatarUrl} name={name} />

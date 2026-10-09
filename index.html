@@ -24,6 +24,18 @@
       rel="stylesheet"
     />
     <title>Minha Agenda</title>
+    <!-- Aplica o tema antes do primeiro paint pra evitar flash. Mesmo
+         contrato do hook useTheme: 'light' | 'dark' | 'system'. -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem('theme')
+          var sysDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+          var dark = stored === 'dark' || ((!stored || stored === 'system') && sysDark)
+          if (dark) document.documentElement.classList.add('dark')
+        } catch (_) {}
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

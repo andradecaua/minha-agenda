@@ -7,6 +7,11 @@ export interface Team {
   slug: string
   name: string
   owner_user_id: string
+  /** URL pública do blob em `backgrounds/<team_id>/...` (0039). */
+  background_url: string | null
+  /** Caminho interno pra limpeza — guardado separado pra evitar
+   *  parsing frágil do URL público. */
+  background_storage_path: string | null
   created_at: string
   updated_at: string
 }
@@ -98,6 +103,38 @@ export async function updateTeamName(teamId: string, name: string): Promise<void
     .update({ name: name.trim() })
     .eq('id', teamId)
   if (error) throw error
+}
+
+/**
+ * Troca o plano de fundo da equipe. Passa a URL e o path internos
+ * pra RPC `update_team_background` (SECURITY DEFINER — faz UPDATE em
+ * `teams` sem precisar relaxar a policy owner-only). Para remover,
+ * passe `null` nos dois.
+ *
+ * Policy do bucket já exige `has_feature('profile.background')` no
+ * upload, mas a RPC também valida pra pegar casos onde o blob foi
+ * subido por outro caminho (dev tool, etc.).
+ */
+export async function updateTeamBackground(
+  url: string | null,
+  path: string | null,
+): Promise<void> {
+  const { data, error } = await supabase.rpc('update_team_background', {
+    p_url:  url,
+    p_path: path,
+  })
+  if (error) throw error
+  const result = (data ?? {}) as { status?: string; error?: string }
+  if (result.status !== 'ok') {
+    const code = result.error ?? 'unknown'
+    const label =
+      code === 'feature_locked'
+        ? 'Seu plano não libera plano de fundo personalizado.'
+        : code === 'no_team'
+          ? 'Você não está em uma equipe.'
+          : 'Não foi possível salvar o plano de fundo.'
+    throw new Error(label)
+  }
 }
 
 type RpcResult<T> = ({ status: 'ok' } & T) | { status: 'error'; error: string }

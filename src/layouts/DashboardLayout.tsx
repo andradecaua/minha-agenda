@@ -22,6 +22,7 @@ import { usePermissions } from '@/hooks/usePermissions'
 import { usePwaInstall } from '@/hooks/usePwaInstall'
 import { PERMISSIONS, type PermissionCode } from '@/lib/permissions'
 import { Button } from '@/components/ui/button'
+import { ThemeToggle } from '@/components/ui/theme-toggle'
 import { cn } from '@/lib/utils'
 
 interface NavItem {
@@ -228,6 +229,7 @@ function SidebarContent({
             {email}
           </div>
         )}
+        <ThemeToggle />
         <Button
           variant="ghost"
           className="w-full justify-start text-muted-foreground"

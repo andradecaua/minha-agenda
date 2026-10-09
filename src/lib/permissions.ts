@@ -18,6 +18,8 @@ export const PERMISSIONS = {
   REPORTS_ADVANCED: 'reports.advanced',
   /** Fotos personalizadas em serviços e produtos (0026). Ícones são livres pra todos. */
   CUSTOM_IMAGES: 'custom_images',
+  /** Plano de fundo personalizado da página pública (0039). */
+  PROFILE_BACKGROUND: 'profile.background',
 } as const
 
 export type PermissionCode = (typeof PERMISSIONS)[keyof typeof PERMISSIONS]
