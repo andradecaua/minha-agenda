@@ -689,11 +689,13 @@ Se faltar atualização, considere a entrega incompleta.
     `/p/<slug>` continua lendo serviços ativos sem sessão.
   - `enforce_services_quota` reescrito pra contar direto por
     `services.team_id` (antes fazia services→profiles→team_members).
-  - `book_appointment` + `admin_create_appointment` reescritas:
-    validavam `services.professional_id = v_profile.id`; agora
-    resolvem o `team_id` do pro e validam
-    `services.team_id = v_team_id`. Sem isso, reservar com o membro
-    (não-autor) do service rejeitava com `service_not_found`.
+  - `book_appointment` + `admin_create_appointment` + `get_available_slots`
+    reescritas: validavam `services.professional_id = v_profile.id`;
+    agora resolvem o `team_id` do pro e validam
+    `services.team_id = v_team_id`. Sem isso, reservar/listar slots
+    com o membro (não-autor do service) rejeitava — o booking
+    chamava `service_not_found` e `get_available_slots` retornava
+    zero horários silenciosamente.
   - Storage (`services` bucket): policies baseadas em
     `current_team_id()` ao lado das antigas por
     `current_professional_id()`. Uploads novos usam path
