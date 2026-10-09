@@ -1,9 +1,11 @@
-import { useState } from 'react'
-import { Link, useParams, useSearchParams } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, Navigate, useParams } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import {
   ArrowRight,
   CalendarCheck,
   Clock,
+  Loader2,
   MapPin,
   MessageCircle,
   Package,
@@ -20,14 +22,22 @@ import { formatCurrencyBRL, formatMinutesDuration } from '@/lib/utils'
 import { formatPhoneBR, isValidPhoneBR, telLink, waLinkBR } from '@/lib/phone'
 import { getIcon } from '@/lib/icons'
 import type { PortfolioItem, Product, Service } from '@/types/database'
-import type { PublicTeamSummary } from '@/services/public-profile'
+import {
+  getPublicProfessional,
+  type PublicTeamSummary,
+} from '@/services/public-profile'
 import { BookingFlow } from '@/pages/public/booking/BookingFlow'
 
 export function ProfessionalPage() {
   const { slug } = useParams<{ slug: string }>()
-  const [search] = useSearchParams()
+  const qc = useQueryClient()
   const { data, isLoading, isError, refetch } = usePublicProfessional(slug)
-  const [bookingOpen, setBookingOpen] = useState(false)
+
+  // Slug do pro que o visitante quer reservar. `null` = modal fechado.
+  // Pode apontar pro próprio dono da página (solo team) ou pra qualquer
+  // membro clicado no TeamOverview. Carrega lazy via usePublicProfessional.
+  const [bookingProSlug, setBookingProSlug] = useState<string | null>(null)
+  const bookingProQuery = usePublicProfessional(bookingProSlug ?? undefined)
 
   const headTitle = data
     ? `${data.profile.name} · Minha Agenda`
@@ -43,6 +53,24 @@ export function ProfessionalPage() {
     ogImage: data?.profile.avatar_url ?? data?.portfolio[0]?.image_url ?? undefined,
   })
 
+  // Pré-carrega dados dos membros da equipe pra que o modal de booking
+  // abra sem latência quando o visitante clica num card da TeamOverview.
+  const isTeamOwnerLanding =
+    !!data?.team &&
+    data.team.members.length > 1 &&
+    data.team.owner_user_id === data.profile.user_id
+  useEffect(() => {
+    if (!isTeamOwnerLanding || !data?.team) return
+    for (const m of data.team.members) {
+      if (m.slug === slug) continue // já carregado como profile principal
+      void qc.prefetchQuery({
+        queryKey: ['public-professional', m.slug],
+        queryFn: () => getPublicProfessional(m.slug),
+        staleTime: 2 * 60 * 1000,
+      })
+    }
+  }, [isTeamOwnerLanding, data, slug, qc])
+
   if (isLoading) {
     return <PublicShell><LoadingState /></PublicShell>
   }
@@ -52,40 +80,45 @@ export function ProfessionalPage() {
   }
 
   const { profile, team, services, settings, portfolio, products } = data
-  const bookingDisabled =
-    !settings?.online_booking_enabled || services.length === 0
 
-  // Visita no slug do OWNER de uma equipe com múltiplos membros:
-  // mostra o overview "escolha um profissional" em vez do booking
-  // dele direto. Exceção: `?book=1` força o booking (usado quando
-  // o próprio owner clica no card dele no overview).
-  const isTeamOwnerLandingPage =
-    !!team &&
-    team.members.length > 1 &&
-    team.owner_user_id === profile.user_id &&
-    search.get('book') !== '1'
+  // Membro de uma equipe multi NÃO tem página individual: a "página
+  // dele" é a página do time (do slug do dono). Redireciona pra lá
+  // pra que a vitrine do time seja a única URL pública.
+  if (team && team.members.length > 1 && team.owner_user_id !== profile.user_id) {
+    const ownerSlug =
+      team.members.find((m) => m.role === 'owner')?.slug ?? team.slug
+    return <Navigate to={`/p/${ownerSlug}`} replace />
+  }
 
-  if (isTeamOwnerLandingPage) {
+  // Owner de equipe multi → vitrine do time (ninguém chega aqui
+  // "direto do booking" porque members não têm mais página individual).
+  if (isTeamOwnerLanding) {
     return (
       <PublicShell>
-        <TeamOverview team={team!} portfolio={portfolio} />
+        <TeamOverview
+          team={team!}
+          portfolio={portfolio}
+          onBookWithPro={(proSlug) => setBookingProSlug(proSlug)}
+          loadingProSlug={bookingProQuery.isFetching ? bookingProSlug : null}
+        />
+        <BookingPortal
+          data={bookingProQuery.data ?? null}
+          onClose={() => {
+            setBookingProSlug(null)
+            void refetch()
+          }}
+        />
       </PublicShell>
     )
   }
 
-  const isInMultiTeam = !!team && team.members.length > 1
+  // Solo team (ou membro que ficou numa equipe só com ele por algum
+  // motivo histórico) — página individual tradicional.
+  const bookingDisabled =
+    !settings?.online_booking_enabled || services.length === 0
 
   return (
     <PublicShell>
-      {isInMultiTeam && (
-        <TeamBreadcrumb
-          teamName={team!.name}
-          ownerSlug={
-            team!.members.find((m) => m.role === 'owner')?.slug ?? team!.slug
-          }
-        />
-      )}
-
       <Hero
         avatarUrl={profile.avatar_url}
         name={profile.name}
@@ -112,7 +145,7 @@ export function ProfessionalPage() {
               size="lg"
               className="w-full shadow-xl"
               disabled={bookingDisabled}
-              onClick={() => setBookingOpen(true)}
+              onClick={() => setBookingProSlug(profile.slug)}
             >
               <CalendarCheck className="h-5 w-5" />
               {bookingDisabled
@@ -125,20 +158,39 @@ export function ProfessionalPage() {
         </div>
       </div>
 
-      <BookingFlow
-        open={bookingOpen}
+      <BookingPortal
+        data={bookingProQuery.data ?? null}
         onClose={() => {
-          setBookingOpen(false)
-          // Após uma reserva, o próximo visitante não deve ver o mesmo
-          // slot livre. Invalida cache local do profissional.
+          setBookingProSlug(null)
           void refetch()
         }}
-        slug={profile.slug}
-        professionalName={profile.name}
-        services={services}
-        settings={settings}
       />
     </PublicShell>
+  )
+}
+
+/**
+ * Wrapper fino do BookingFlow que só monta quando os dados do pro
+ * alvo estão prontos. Previne flash de modal vazio enquanto o
+ * `usePublicProfessional` busca o pro escolhido no TeamOverview.
+ */
+function BookingPortal({
+  data,
+  onClose,
+}: {
+  data: Awaited<ReturnType<typeof getPublicProfessional>> | null
+  onClose: () => void
+}) {
+  if (!data) return null
+  return (
+    <BookingFlow
+      open
+      onClose={onClose}
+      slug={data.profile.slug}
+      professionalName={data.profile.name}
+      services={data.services}
+      settings={data.settings}
+    />
   )
 }
 
@@ -244,30 +296,18 @@ function Avatar({ url, name }: { url: string | null; name: string }) {
  * EQUIPE — overview "pick a professional"
  * ============================================================ */
 
-function TeamBreadcrumb({ teamName, ownerSlug }: { teamName: string; ownerSlug: string }) {
-  return (
-    <div className="border-b bg-muted/40">
-      <div className="mx-auto flex max-w-6xl items-center gap-2 px-4 py-2 text-xs text-muted-foreground sm:px-6 lg:px-8">
-        <Users2 className="h-3.5 w-3.5" aria-hidden="true" />
-        Faz parte da equipe{' '}
-        <Link to={`/p/${ownerSlug}`} className="font-medium text-foreground hover:underline">
-          {teamName}
-        </Link>
-        <ArrowRight className="h-3 w-3" aria-hidden="true" />
-        <Link to={`/p/${ownerSlug}`} className="hover:underline">
-          Ver todos os profissionais
-        </Link>
-      </div>
-    </div>
-  )
-}
-
 interface TeamOverviewProps {
   team: PublicTeamSummary
   portfolio: PortfolioItem[]
+  /** Callback disparado quando o visitante clica num card. Abre o
+   *  BookingFlow com os dados do pro escolhido (busca lazy). */
+  onBookWithPro: (proSlug: string) => void
+  /** Slug do pro cujo card está esperando a query completar. Usado
+   *  pra desenhar o loader no card certo em vez de na página inteira. */
+  loadingProSlug: string | null
 }
 
-function TeamOverview({ team, portfolio }: TeamOverviewProps) {
+function TeamOverview({ team, portfolio, onBookWithPro, loadingProSlug }: TeamOverviewProps) {
   return (
     <>
       <header className="relative overflow-hidden">
@@ -301,12 +341,14 @@ function TeamOverview({ team, portfolio }: TeamOverviewProps) {
           <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {team.members.map((m) => {
               const isOwner = m.role === 'owner'
-              const href = isOwner ? `/p/${m.slug}?book=1` : `/p/${m.slug}`
+              const loading = loadingProSlug === m.slug
               return (
                 <li key={m.user_id}>
-                  <Link
-                    to={href}
-                    className="group flex h-full flex-col items-center rounded-xl border bg-background p-5 text-center transition-colors hover:border-primary/40 hover:bg-accent/40"
+                  <button
+                    type="button"
+                    onClick={() => onBookWithPro(m.slug)}
+                    disabled={loading}
+                    className="group flex h-full w-full flex-col items-center rounded-xl border bg-background p-5 text-center transition-colors hover:border-primary/40 hover:bg-accent/40 disabled:cursor-wait disabled:opacity-70"
                   >
                     <ProAvatar name={m.name} url={m.avatar_url} />
                     <div className="mt-3 flex items-center gap-2">
@@ -329,10 +371,19 @@ function TeamOverview({ team, portfolio }: TeamOverviewProps) {
                       </p>
                     )}
                     <span className="mt-4 inline-flex items-center gap-1 text-xs font-medium text-primary group-hover:underline">
-                      Reservar com {m.name.split(' ')[0]}
-                      <ArrowRight className="h-3 w-3" aria-hidden="true" />
+                      {loading ? (
+                        <>
+                          <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+                          Abrindo...
+                        </>
+                      ) : (
+                        <>
+                          Reservar com {m.name.split(' ')[0]}
+                          <ArrowRight className="h-3 w-3" aria-hidden="true" />
+                        </>
+                      )}
                     </span>
-                  </Link>
+                  </button>
                 </li>
               )
             })}

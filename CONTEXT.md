@@ -667,6 +667,42 @@ Se faltar atualização, considere a entrega incompleta.
 
 ## Changelog
 
+- **2026-10-09** — **Membro de equipe não tem mais página pública individual (v0.4.4).**
+
+  Decisão de produto: numa equipe multi-member a página pública é
+  UMA só — a do slug do owner. Visitante entra em `/p/<owner-slug>`,
+  vê a vitrine do time (`TeamOverview`) com cards dos profissionais,
+  clica num card e abre o modal de booking já com os serviços
+  daquele pro. Antes cada membro tinha sua própria página
+  `/p/<member-slug>` com hero + portfolio + serviços + CTA de
+  booking — ambígu idade que fazia parecer que cada um tinha seu
+  próprio portfólio.
+
+  **Comportamento novo:**
+  - `/p/<member-slug>` (membro em equipe multi, `role != 'owner'`) →
+    `<Navigate replace>` pra `/p/<owner-slug>`. Links antigos
+    compartilhados em WhatsApp/Instagram continuam funcionando (só
+    caem na vitrine do time).
+  - `TeamOverview` cards viram `<button>` em vez de `<Link>`.
+    Clique abre o `BookingFlow` inline carregando o pro escolhido
+    via `usePublicProfessional(memberSlug)` com cache quente
+    (prefetch disparado no mount do owner landing).
+  - Owner's "próprio card" também agora abre modal — remove o
+    `?book=1` query param. URL única.
+  - Solo team (owner sozinho) → comportamento inalterado: página
+    individual com Hero + Portfolio + Services + CTA sticky.
+
+  **Removido:**
+  - `TeamBreadcrumb` ("Faz parte da equipe X → Ver todos os
+    profissionais") — não existe mais página individual de membro
+    pra precisar do breadcrumb.
+  - Lógica `?book=1` no `ProfessionalPage`.
+
+  **O que fica como no 0.4.3:** `profile.name` do membro continua
+  sendo pedido na aceitação do convite (`AcceptInvitePage` → nome
+  obrigatório); o nome aparece agora exclusivamente no card da
+  vitrine do time, nunca mais como `/p/<nome-de-email>`.
+
 - **2026-10-09** — **Aceite de convite pede nome do membro (v0.4.3).**
 
   Fluxo de convite tinha um defeito cosmético que ficou visível depois
