@@ -308,6 +308,14 @@ interface TeamOverviewProps {
 }
 
 function TeamOverview({ team, portfolio, onBookWithPro, loadingProSlug }: TeamOverviewProps) {
+  // Hero puxa o nome DIRETAMENTE do profile do owner (fresh em cada
+  // fetch da página pública) em vez de `teams.name`. `teams.name` é
+  // auto-preenchido no provision mas nunca sincroniza quando o owner
+  // edita `profile.name` — exibi-lo aqui causa o nome "antigo" ficar
+  // preso na vitrine. Fallback pro team.name se por algum motivo o
+  // owner não estiver na lista de membros (não deveria acontecer).
+  const owner = team.members.find((m) => m.role === 'owner')
+  const heroName = owner?.name ?? team.name
   return (
     <>
       <header className="relative overflow-hidden">
@@ -323,7 +331,7 @@ function TeamOverview({ team, portfolio, onBookWithPro, loadingProSlug }: TeamOv
             <Users2 className="h-10 w-10 sm:h-12 sm:w-12" />
           </div>
           <h1 className="mt-5 text-3xl font-semibold tracking-tight sm:text-4xl lg:text-5xl">
-            {team.name}
+            {heroName}
           </h1>
           <p className="mt-3 text-sm text-muted-foreground sm:text-base">
             Escolha um profissional pra reservar.

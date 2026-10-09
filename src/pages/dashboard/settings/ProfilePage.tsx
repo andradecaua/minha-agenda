@@ -13,6 +13,7 @@ import { PhoneInput } from '@/components/ui/phone-input'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { AvatarUpload } from '@/components/ui/avatar-upload'
 import { useMyProfile } from '@/hooks/queries/useMyProfile'
+import { useMyTeam, useTeamMembers } from '@/hooks/queries/useMyTeam'
 import {
   SLUG_REGEX,
   isSlugAvailable,
@@ -44,12 +45,28 @@ type ProfileFormData = z.infer<typeof profileSchema>
 export function ProfilePage() {
   const queryClient = useQueryClient()
   const { data: profile, isLoading } = useMyProfile()
+  const { data: team } = useMyTeam()
+  const { data: teamMembers } = useTeamMembers(team?.id)
 
   const [savedAt, setSavedAt] = useState<Date | null>(null)
   const [serverError, setServerError] = useState<string | null>(null)
   const [slugCheck, setSlugCheck] = useState<'idle' | 'checking' | 'ok' | 'taken'>(
     'idle',
   )
+
+  // Membro em equipe multi: a URL pública é a do owner (members não
+  // têm mais página individual desde v0.4.4). Mostramos o slug do
+  // owner no lugar do próprio pra que o botão "copiar" compartilhe
+  // o link certo.
+  const isMemberInMultiTeam =
+    !!team &&
+    !!teamMembers &&
+    teamMembers.length > 1 &&
+    !!profile &&
+    team.owner_user_id !== profile.user_id
+  const ownerSlug = isMemberInMultiTeam
+    ? teamMembers?.find((m) => m.role === 'owner')?.profile?.slug ?? null
+    : null
 
   const {
     register,
@@ -113,6 +130,10 @@ export function ProfilePage() {
     },
     onSuccess: (updated) => {
       queryClient.setQueryData(['my-profile', profile?.user_id], updated)
+      // Invalida cache da página pública pra que o novo nome/slug/bio
+      // apareça imediatamente em `/p/<slug>` (seja do próprio profile
+      // ou do owner do time, se for membro — o fetch arrasta ambos).
+      void queryClient.invalidateQueries({ queryKey: ['public-professional'] })
       setSavedAt(new Date())
       setServerError(null)
     },
@@ -153,8 +174,12 @@ export function ProfilePage() {
   const publicUrl = useMemo(() => {
     if (!profile) return ''
     const base = typeof window !== 'undefined' ? window.location.origin : ''
-    return `${base}/p/${slugValue || profile.slug}`
-  }, [profile, slugValue])
+    // Membro em equipe multi compartilha o link do owner — o slug
+    // próprio só redireciona pra lá. Owner e profissional solo usam
+    // o próprio slug.
+    const effectiveSlug = ownerSlug ?? slugValue ?? profile.slug
+    return `${base}/p/${effectiveSlug}`
+  }, [profile, slugValue, ownerSlug])
 
   if (isLoading || !profile) {
     return (
@@ -248,6 +273,16 @@ export function ProfilePage() {
                 currentSlug={profile.slug}
                 nextSlug={slugValue}
               />
+              {isMemberInMultiTeam && (
+                <p className="text-xs text-muted-foreground">
+                  Como membro da equipe, sua página pública é a do time:{' '}
+                  <code className="rounded bg-muted px-1 py-0.5">
+                    /p/{ownerSlug}
+                  </code>
+                  . Este slug só identifica você internamente — qualquer
+                  URL com ele redireciona pra página da equipe.
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">

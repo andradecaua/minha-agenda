@@ -667,6 +667,34 @@ Se faltar atualização, considere a entrega incompleta.
 
 ## Changelog
 
+- **2026-10-09** — **Hero da vitrine usa nome do owner + link público do membro (v0.4.5).**
+
+  Dois ajustes pós-v0.4.4:
+
+  **1. Hero da `TeamOverview` ficava com nome antigo depois do owner
+  atualizar o profile.** Causa: hero puxava de `teams.name`, campo
+  que foi auto-preenchido com `profile.name` no provision mas nunca
+  sincroniza quando o owner edita o próprio nome. Fix: hero agora
+  lê o `name` do membro `role='owner'` dentro de `team.members[]`
+  (que vem fresh de `profiles` em todo fetch). `teams.name` segue
+  no DB mas não é mais exibido no público — fica como "slug amigável
+  interno" até ganhar UI de edição explícita.
+
+  **2. Link público do membro apontava pra `/p/<member-slug>` em
+  vez de `/p/<owner-slug>`.** Como `/p/<member-slug>` só redireciona
+  desde v0.4.4, o link copiado pelo membro mandava o visitante por
+  uma rota indireta. Fix: em `ProfilePage`, quando o user é
+  `role='member'` em team multi, `publicUrl` passa a usar o slug
+  do owner (resolvido via `useMyTeam()` + `useTeamMembers()`). Nota
+  explicativa aparece abaixo do campo de slug: "Como membro da
+  equipe, sua página pública é a do time: /p/{owner-slug}".
+
+  **Bonus:** `ProfilePage.onSuccess` do save agora dispara
+  `invalidateQueries({queryKey: ['public-professional']})`, cobrindo
+  o caso do owner (ou membro) editar perfil e abrir a página
+  pública em outra aba — refresh de janela reconsulta imediatamente
+  em vez de respeitar os 2min de staleTime.
+
 - **2026-10-09** — **Membro de equipe não tem mais página pública individual (v0.4.4).**
 
   Decisão de produto: numa equipe multi-member a página pública é
