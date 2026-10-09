@@ -44,6 +44,10 @@ export interface BusinessHour {
 
 export interface Service {
   id: string
+  /** Dono do serviço desde 0038: team_id. Qualquer membro edita/
+   *  cria/remove. `professional_id` fica como "autor" (quem criou),
+   *  mas não gate de acesso. */
+  team_id: string
   professional_id: string
   name: string
   description: string | null

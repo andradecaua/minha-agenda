@@ -7,13 +7,18 @@ export type ServiceInput = Pick<
   'name' | 'description' | 'price_cents' | 'duration_minutes' | 'icon' | 'active'
 >
 
+/**
+ * Services ficam no team desde 0038. O frontend filtra por team_id;
+ * `professional_id` da linha fica como "quem criou" (autor), mas
+ * não controla acesso nem listagem.
+ */
 export async function listServices(
-  professionalId: string,
+  teamId: string,
 ): Promise<Service[]> {
   const { data, error } = await supabase
     .from('services')
     .select('*')
-    .eq('professional_id', professionalId)
+    .eq('team_id', teamId)
     .order('active', { ascending: false })
     .order('name', { ascending: true })
   if (error) throw error
@@ -34,6 +39,7 @@ export interface CreateServiceOptions {
 }
 
 export async function createService(
+  teamId: string,
   professionalId: string,
   input: ServiceInput,
   { imageFile }: CreateServiceOptions = {},
@@ -42,7 +48,9 @@ export async function createService(
   let uploadedPath: string | null = null
 
   if (imageFile) {
-    const { publicUrl, path } = await uploadImage('services', professionalId, imageFile)
+    // Upload sob o path do team (0038). RLS do bucket `services` só
+    // aceita escrever quando o primeiro segmento == current_team_id.
+    const { publicUrl, path } = await uploadImage('services', teamId, imageFile)
     imageUrl = publicUrl
     uploadedPath = path
   }
@@ -50,6 +58,7 @@ export async function createService(
   const { data, error } = await supabase
     .from('services')
     .insert({
+      team_id: teamId,
       professional_id: professionalId,
       image_url: imageUrl,
       image_storage_path: uploadedPath,
@@ -87,9 +96,11 @@ export async function updateService(
   let newUploadPath: string | null = null
 
   if (imageFile) {
+    // Upload sob o team_id da linha (não o professional_id original)
+    // pra respeitar as policies novas do bucket.
     const { publicUrl, path } = await uploadImage(
       'services',
-      current.professional_id,
+      current.team_id,
       imageFile,
     )
     update.image_url = publicUrl

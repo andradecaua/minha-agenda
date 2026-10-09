@@ -125,12 +125,17 @@ export async function getPublicProfessional(
         .select('*')
         .eq('professional_id', profile.id)
         .maybeSingle(),
-      supabase
-        .from('services')
-        .select('*')
-        .eq('professional_id', profile.id)
-        .eq('active', true)
-        .order('price_cents', { ascending: true }),
+      // Services ficam no team desde 0038 (compartilhados). O
+      // visitante na página pública vê TODOS os serviços do time,
+      // independente de qual pro ele clicou.
+      teamId
+        ? supabase
+            .from('services')
+            .select('*')
+            .eq('team_id', teamId)
+            .eq('active', true)
+            .order('price_cents', { ascending: true })
+        : Promise.resolve({ data: [] as unknown[], error: null }),
       teamId
         ? supabase
             .from('portfolio_items')

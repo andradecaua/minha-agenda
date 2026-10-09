@@ -667,6 +667,57 @@ Se faltar atualização, considere a entrega incompleta.
 
 ## Changelog
 
+- **2026-10-09** — **Services compartilhados pela equipe (v0.4.6, migration 0038).**
+
+  Services deixam de ser por `professional_id` e passam a ser por
+  `team_id` — mesmo padrão de portfolio (0033). Qualquer membro da
+  equipe edita/cria/remove a mesma lista; preço, duração, descrição,
+  imagem e ícone são iguais pros dois profissionais. Appointments
+  continuam linkando o `professional_id` do pro que vai atender
+  (quem faz, não muda), mas o `service_id` aponta pra lista única
+  do time.
+
+  **DB (`0038_services_team.sql`):**
+  - `services.team_id uuid NOT NULL REFERENCES teams(id) ON DELETE
+    CASCADE` adicionada + backfill via profile → user → team_members.
+    `professional_id` fica como "autor" (quem criou), sem gate de
+    acesso.
+  - Índice `services_team_active_idx (team_id, active)`.
+  - RLS: `services_owner_all` dropada; `services_team_select/insert/
+    update/delete` novas usam `team_id = current_team_id()`. SELECT
+    público (`services_public_select` de 0002) intacto — página
+    `/p/<slug>` continua lendo serviços ativos sem sessão.
+  - `enforce_services_quota` reescrito pra contar direto por
+    `services.team_id` (antes fazia services→profiles→team_members).
+  - `book_appointment` + `admin_create_appointment` reescritas:
+    validavam `services.professional_id = v_profile.id`; agora
+    resolvem o `team_id` do pro e validam
+    `services.team_id = v_team_id`. Sem isso, reservar com o membro
+    (não-autor) do service rejeitava com `service_not_found`.
+  - Storage (`services` bucket): policies baseadas em
+    `current_team_id()` ao lado das antigas por
+    `current_professional_id()`. Uploads novos usam path
+    `{team_id}/<arquivo>`.
+
+  **Frontend:**
+  - `services.ts` → `listServices(teamId)`, `createService(teamId,
+    professionalId, input, ...)`. Upload de imagem usa `teamId` como
+    pasta.
+  - `useServices(teamId)` + `servicesQueryKey(teamId)` — cache
+    compartilhado entre owner e member (um invalida, o outro vê).
+  - `ServicesPage` + `NewAppointmentPage` usam `useMyTeam()` pra
+    puxar o `team.id` que entra em `useServices`.
+  - `public-profile.ts` carrega `services` filtrados por `team_id`
+    (não mais `professional_id`). Visitante vê a mesma lista
+    independente de qual pro clicou no TeamOverview.
+  - `Service` type ganha `team_id: string`.
+  - Save do `ServicesPage` invalida `['public-professional']` pra
+    refletir mudanças imediatas na vitrine.
+
+  **Setup pós-deploy:** aplicar `0038_services_team.sql` via
+  Dashboard SQL (ou `supabase db push` se o drift tiver sido
+  reparado).
+
 - **2026-10-09** — **Hero da vitrine usa nome do owner + link público do membro (v0.4.5).**
 
   Dois ajustes pós-v0.4.4:

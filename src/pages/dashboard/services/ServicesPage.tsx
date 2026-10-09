@@ -8,6 +8,7 @@ import { Switch } from '@/components/ui/switch'
 import { Dialog } from '@/components/ui/dialog'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 import { useMyProfile } from '@/hooks/queries/useMyProfile'
+import { useMyTeam } from '@/hooks/queries/useMyTeam'
 import { servicesQueryKey, useServices } from '@/hooks/queries/useServices'
 import { myUsageQueryKey, useMyUsage } from '@/hooks/queries/useMyUsage'
 import {
@@ -25,7 +26,8 @@ import { ServiceForm, type ServiceFormResult } from './ServiceForm'
 export function ServicesPage() {
   const queryClient = useQueryClient()
   const { data: profile } = useMyProfile()
-  const { data: services, isLoading } = useServices(profile?.id)
+  const { data: team } = useMyTeam()
+  const { data: services, isLoading } = useServices(team?.id)
   const { data: usage } = useMyUsage()
 
   const [editing, setEditing] = useState<Service | null>(null)
@@ -39,17 +41,22 @@ export function ServicesPage() {
   const atQuota = maxServices !== null && servicesCount >= maxServices
 
   function invalidate() {
-    if (profile) {
-      queryClient.invalidateQueries({ queryKey: servicesQueryKey(profile.id) })
+    if (team) {
+      queryClient.invalidateQueries({ queryKey: servicesQueryKey(team.id) })
     }
     // Refresca o contador — o novo serviço mudou `services_count`.
     queryClient.invalidateQueries({ queryKey: myUsageQueryKey() })
+    // Página pública usa services na vitrine — invalida pra refletir
+    // mudanças (criar/editar/toggle active) sem esperar o staleTime.
+    queryClient.invalidateQueries({ queryKey: ['public-professional'] })
   }
 
   const createMutation = useMutation({
     mutationFn: ({ result }: { result: ServiceFormResult }) => {
-      if (!profile) throw new Error('Perfil não carregado')
-      return createService(profile.id, result.input, { imageFile: result.imageFile })
+      if (!profile || !team) throw new Error('Perfil/equipe não carregados')
+      return createService(team.id, profile.id, result.input, {
+        imageFile: result.imageFile,
+      })
     },
     onSuccess: () => {
       invalidate()

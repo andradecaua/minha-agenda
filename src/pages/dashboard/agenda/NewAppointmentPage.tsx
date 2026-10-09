@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { useMyProfile } from '@/hooks/queries/useMyProfile'
+import { useMyTeam } from '@/hooks/queries/useMyTeam'
 import { useServices } from '@/hooks/queries/useServices'
 import { useClients } from '@/hooks/queries/useClients'
 import { useAvailableSlots } from '@/hooks/queries/useAvailableSlots'
@@ -33,7 +34,9 @@ export function NewAppointmentPage() {
   }, [params])
 
   const { data: profile } = useMyProfile()
-  const { data: services } = useServices(profile?.id)
+  const { data: team } = useMyTeam()
+  // Services ficam no team desde 0038 (compartilhados pelo time).
+  const { data: services } = useServices(team?.id)
   const { data: clients } = useClients(profile?.id)
 
   const [client, setClient] = useState<ClientSelection>({ kind: 'none' })
