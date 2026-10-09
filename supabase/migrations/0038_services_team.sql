@@ -54,7 +54,11 @@ create index if not exists services_team_active_idx
 -- A owner_all protegia leituras privadas (ex.: inativos) e writes
 -- — ambos passam a ser team-wide.
 -- =============================================================
-drop policy if exists "services_owner_all" on public.services;
+drop policy if exists "services_owner_all"    on public.services;
+drop policy if exists "services_team_select"  on public.services;
+drop policy if exists "services_team_insert"  on public.services;
+drop policy if exists "services_team_update"  on public.services;
+drop policy if exists "services_team_delete"  on public.services;
 
 create policy "services_team_select"
   on public.services
