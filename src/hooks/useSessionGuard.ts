@@ -23,6 +23,15 @@ import { useAuth } from '@/hooks/useAuth'
 const LOCAL_KEY = 'minha-agenda:session-claim'
 const HEARTBEAT_MS = 60 * 1000
 
+// Durante sessão de recovery (link do email), não rodamos o guard. Dois
+// motivos: (1) o claim local antigo pode diferir do DB (outro device
+// legitimamente logado) e o overlay "sessão encerrada" cobriria a tela
+// antes do user conseguir trocar a senha; (2) se claim-arrmos aqui,
+// sobrescrevemos o session_id e derrubamos o device legítimo mesmo que
+// o user nem complete o reset. Flag vem do AuthContext (evento
+// `PASSWORD_RECOVERY` do Supabase). Depois do `updateUser` o fluxo
+// força signOut → próximo login reclaim-a normalmente.
+
 interface Stored {
   userId: string
   sessionId: string
@@ -56,17 +65,26 @@ function clearLocal(): void {
   }
 }
 
-async function readDbSessionId(userId: string): Promise<string | null> {
+type DbReadResult =
+  | { kind: 'row'; sessionId: string }
+  | { kind: 'missing' }
+  | { kind: 'error' }
+
+async function readDbSessionId(userId: string): Promise<DbReadResult> {
   const { data, error } = await supabase
     .from('user_sessions')
     .select('session_id')
     .eq('user_id', userId)
     .maybeSingle()
   if (error) {
+    // Erro de rede / RLS / etc — NÃO interpretar como "linha apagada",
+    // senão offline rápido fazia kick falso. Caller trata como no-op.
     console.warn('[session-guard] falha ao ler user_sessions:', error.message)
-    return null
+    return { kind: 'error' }
   }
-  return (data?.session_id as string | null) ?? null
+  const sid = data?.session_id as string | null | undefined
+  if (!sid) return { kind: 'missing' }
+  return { kind: 'row', sessionId: sid }
 }
 
 async function claimSession(userId: string, sessionId: string): Promise<void> {
@@ -82,12 +100,20 @@ async function claimSession(userId: string, sessionId: string): Promise<void> {
 }
 
 export function useSessionGuard(): { kicked: boolean } {
-  const { user, loading } = useAuth()
+  const { user, loading, isRecoverySession } = useAuth()
   const [kicked, setKicked] = useState(false)
   const localIdRef = useRef<string | null>(null)
 
   useEffect(() => {
     if (loading) return
+
+    if (isRecoverySession) {
+      // Sessão de recovery (link do email) — não claim nem heartbeat.
+      // Também garante que o overlay suma se o user navegou pra cá
+      // depois de ter sido kickado em outra rota.
+      setKicked(false)
+      return
+    }
 
     if (!user) {
       // Deslogado — limpa claim local e reseta estado pra próximo login.
@@ -108,16 +134,21 @@ export function useSessionGuard(): { kicked: boolean } {
         // Mesmo user que já estava — reutiliza o session_id local,
         // mas confirma com o DB antes de considerar "ativo".
         localId = stored.sessionId
-        const dbId = await readDbSessionId(user!.id)
+        const result = await readDbSessionId(user!.id)
         if (cancelled) return
-        if (dbId === null) {
-          // DB sem registro: raro (user_sessions deletada?). Reclaim.
-          await claimSession(user!.id, localId)
-        } else if (dbId !== localId) {
+        if (result.kind === 'missing') {
+          // Linha apagada = alguém (reset de senha ou signOut com
+          // scope=global em outro device) invalidou a sessão deste
+          // user. Kicka — reclaim mascararia a invalidação legítima.
+          setKicked(true)
+          return
+        } else if (result.kind === 'row' && result.sessionId !== localId) {
           // Outro device assumiu enquanto estávamos fora/offline.
           setKicked(true)
           return
         }
+        // kind === 'error' → trata como no-op (não kicka em erro
+        // transiente de rede/RLS). Heartbeat tenta de novo.
       } else {
         // User diferente (ou primeira vez neste browser) → novo claim.
         localId =
@@ -141,9 +172,14 @@ export function useSessionGuard(): { kicked: boolean } {
 
     async function heartbeat() {
       if (!user || !localIdRef.current) return
-      const dbId = await readDbSessionId(user.id)
+      const result = await readDbSessionId(user.id)
       if (cancelled) return
-      if (dbId !== null && dbId !== localIdRef.current) {
+      // Mismatch OU linha apagada → kicka. Erro transiente de rede/RLS
+      // é no-op (tenta de novo no próximo tick).
+      const shouldKick =
+        (result.kind === 'row' && result.sessionId !== localIdRef.current) ||
+        result.kind === 'missing'
+      if (shouldKick) {
         setKicked(true)
         if (timer !== undefined) {
           clearInterval(timer)
@@ -158,7 +194,7 @@ export function useSessionGuard(): { kicked: boolean } {
       cancelled = true
       if (timer !== undefined) clearInterval(timer)
     }
-  }, [user, loading])
+  }, [user, loading, isRecoverySession])
 
   return { kicked }
 }

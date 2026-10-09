@@ -84,7 +84,9 @@ create policy "subscriptions_team_select"
 -- 3) has_feature / my_permissions / my_plan / my_subscription_detail
 --    → via current_team_id
 -- =============================================================
-drop function if exists public.has_feature(text);
+-- has_feature(text) retém a mesma assinatura (returns boolean) desde
+-- 0019, então create or replace basta — drop quebraria 6 policies
+-- (products_owner_* / portfolio_team_*) que dependem da função.
 create or replace function public.has_feature(p_code text)
 returns boolean
 language sql

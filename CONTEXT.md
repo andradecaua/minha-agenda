@@ -667,6 +667,84 @@ Se faltar atualização, considere a entrega incompleta.
 
 ## Changelog
 
+- **2026-10-09** — **Recovery link não loga mais sozinho + signOut limpa sessão (v0.4.2, migration 0037).**
+
+  Dois reforços de segurança no fluxo de senha/sessão:
+
+  **1. Link de recovery não faz "auto-login".**
+  Antes, bastava clicar no link do email pra ficar com uma sessão
+  autenticada ativa (o Supabase SDK cria sessão de recovery com
+  `detectSessionInUrl: true`). Se o user fechasse a aba sem trocar a
+  senha, ainda tinha ~1h de sessão viva — contornava a prova de posse
+  via senha nova. Agora:
+  - `AuthContext` escuta `onAuthStateChange('PASSWORD_RECOVERY')` e
+    expõe flag `isRecoverySession: boolean`, persistida em
+    localStorage pra sobreviver a refresh. Inspeciona
+    `window.location.hash` sincronamente no boot também, pra não
+    perder o evento se o SDK emitir antes do listener subir.
+  - `ProtectedRoute` + `GuestOnlyRoute` redirecionam pra
+    `/reset-password` enquanto `isRecoverySession` estiver on —
+    qualquer rota de dashboard/login fica inacessível.
+  - `ResetPasswordPage` chama `signOut({ scope: 'global' })` após
+    `updateUser({password})`: revoga TODAS as sessões do user no
+    Supabase e manda pra `/login?reset=ok` (banner "Senha atualizada,
+    entre com a senha nova"). Ninguém segue logado sem autenticar
+    explicitamente com a senha nova.
+  - `useSessionGuard` passa a usar a flag (em vez do pathname
+    `/reset-password` do fix anterior) — é a verdade semântica.
+
+  **2. Logout agora apaga `user_sessions`.**
+  Antes, `signOut` só chamava `supabase.auth.signOut()` — JWT revogado,
+  localStorage limpo, mas a linha em `public.user_sessions` ficava
+  stale até o próximo login sobrescrever. Hígide ruim. Agora:
+  - `AuthContext.signOut`: `DELETE from user_sessions where user_id =
+    auth.uid()` ANTES do `supabase.auth.signOut()` (depois do signOut
+    o JWT some e a RLS self-only não deixa). Best-effort — se falhar,
+    log warning, não impede o logout.
+  - Nova migration `0037_user_sessions_delete.sql`: adiciona policy
+    `user_sessions_self_delete` + `grant delete` (0030 só previu
+    select/insert/update).
+  - `signOut` aceita `{ scope: 'global' | 'local' | 'others' }`
+    opcional, repassado pro Supabase. Reset de senha usa `'global'`
+    pra invalidar devices paralelos (default do botão de "Sair" no
+    dashboard continua `'local'`).
+
+  **3. SessionGuard trata linha apagada como kick.**
+  Como consequência do item 2, `user_sessions` pode legitimamente ter
+  a linha deletada por outro device (reset de senha → signOut global).
+  Antes o hook tratava `null do DB + claim local` como "DB sem
+  registro, reclaim" — recladeria por cima e deixaria o device velho
+  logado, mascarando a invalidação. Agora:
+  - `readDbSessionId` retorna `{kind: 'row'|'missing'|'error'}` — não
+    confunde mais erro de rede com linha ausente.
+  - `missing` → kicka (sessão foi invalidada); `error` → no-op (tenta
+    no próximo heartbeat); `row` com mismatch → kicka como antes.
+
+  **Setup pós-deploy:**
+  ```
+  supabase db push   # aplica 0037_user_sessions_delete.sql
+  ```
+
+- **2026-10-09** — **Fix: `/reset-password` quebrado pela sessão única (v0.4.1).**
+
+  Regressão do cruzamento entre a sessão única (v0.3.3, 2026-10-07) e o
+  fluxo de recovery (2026-10-06). O `SessionGuard` é montado em
+  `App.tsx` fora de `AppRoutes`, então rodava em `/reset-password`
+  também. Dois modos de falha:
+  - Browser com claim local antigo deste user (e DB apontando pra outro
+    device ativo): mismatch → overlay "Sessão encerrada" cobre a tela
+    antes do user conseguir trocar a senha.
+  - Browser sem claim: `claimSession()` sobrescreve `user_sessions.
+    session_id` só por abrir o link → derruba o device legítimo em
+    ≤60s mesmo que o reset nunca se complete.
+
+  **Fix:** `useSessionGuard` passa a usar `useLocation()` e trata
+  `/reset-password` como no-op (sem claim, sem heartbeat, `kicked`
+  forçado pra `false`). Depois do `updateUser` bem-sucedido o
+  `ResetPasswordPage` navega pra `/dashboard`, onde o guard volta a
+  rodar e faz o reclaim normalmente — comportamento desejado (o
+  device do reset agora é o ativo).
+
 - **2026-10-07** — **Página pública com drill-down por profissional (v0.4.0).**
 
   Step 2e (último do refactor "plano por equipe"). A página pública

@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -16,6 +16,8 @@ export function LoginPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const locationState = location.state as LocationState | null
+  const [searchParams] = useSearchParams()
+  const resetOk = searchParams.get('reset') === 'ok'
   const [email, setEmail] = useState(locationState?.prefillEmail ?? '')
   const [password, setPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -43,6 +45,14 @@ export function LoginPage() {
           <CardDescription>Acesse sua agenda profissional.</CardDescription>
         </CardHeader>
         <CardContent>
+          {resetOk && (
+            <p
+              role="status"
+              className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800"
+            >
+              Senha atualizada. Entre com a senha nova.
+            </p>
+          )}
           <form onSubmit={handleSubmit} className="space-y-4" noValidate>
             <div className="space-y-2">
               <Label htmlFor="email">E-mail</Label>
