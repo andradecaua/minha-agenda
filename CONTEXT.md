@@ -667,6 +667,21 @@ Se faltar atualização, considere a entrega incompleta.
 
 ## Changelog
 
+- **2026-10-09** — **Fix: picker de pro voltava pra services (v0.4.8).**
+
+  O `useEffect` de reset do `BookingFlow` tinha `services` nas deps.
+  Trocar de pro no passo `professional` chamava `onPickPro`, o pai
+  re-fetch via `usePublicProfessional` e passava uma nova array de
+  services (mesma conteúdo, referência diferente). Isso disparava
+  o effect → `setStep('services')` → visitante caía de volta no
+  primeiro passo em vez de avançar pra `when`.
+
+  Fix: deps reduzidas pra `[open]`. Trocar pro mantém o fluxo
+  avançando. Pre-select de "único serviço" segue funcionando no
+  open inicial (snapshot do momento). Edge case teórico (services
+  carregar DEPOIS do open) é ignorado porque o `BookingPortal`
+  só monta o `BookingFlow` quando `data` já tá pronto.
+
 - **2026-10-09** — **Vitrine do time vira página solo + picker de pro no modal (v0.4.7).**
 
   Decisão de produto: equipe multi não mostra mais lista de

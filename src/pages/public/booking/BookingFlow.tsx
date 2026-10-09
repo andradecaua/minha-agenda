@@ -77,11 +77,16 @@ export function BookingFlow({
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
-  // Reset ao abrir/fechar — zera tudo quando o Dialog fecha.
+  // Reset ao abrir/fechar — zera tudo quando o Dialog fecha. Dep só
+  // em `open`: trocar de pro (step `professional`) re-fetch e manda
+  // uma `services` array nova; se `services` estivesse nas deps, o
+  // effect resetava step pra `services` e o visitante perdia o
+  // avanço pra `when`. Pre-select de serviço único usa snapshot do
+  // instante do open — se services carregar depois, não roda, mas
+  // na prática o modal só é montado quando os dados estão prontos.
   useEffect(() => {
     if (open) {
       setStep('services')
-      // Pré-seleciona se só existe um serviço
       setSelectedIds(services.length === 1 ? [services[0]!.id] : [])
     } else {
       const t = setTimeout(() => {
@@ -97,7 +102,8 @@ export function BookingFlow({
       }, 150)
       return () => clearTimeout(t)
     }
-  }, [open, services])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
 
   const selectedServices = useMemo(
     () => selectedIds.map((id) => services.find((s) => s.id === id)!).filter(Boolean),
