@@ -667,6 +667,34 @@ Se faltar atualização, considere a entrega incompleta.
 
 ## Changelog
 
+- **2026-10-09** — **Vitrine do time vira página solo + picker de pro no modal (v0.4.7).**
+
+  Decisão de produto: equipe multi não mostra mais lista de
+  profissionais na página pública — `/p/<owner-slug>` renderiza
+  EXATAMENTE como o perfil de um pro solo (hero + portfolio +
+  services + CTA "Agendar horário"). A escolha de qual
+  profissional vai atender migra pra DENTRO do `BookingFlow`,
+  como novo passo `professional` entre `services` e `when`.
+
+  **Frontend:**
+  - `ProfessionalPage` — removido o branch `isTeamOwnerLanding`
+    que montava `TeamOverview`. O componente `TeamOverview` +
+    `ProAvatar` + `TeamOverviewProps` deletados (não usados).
+    O owner-landing agora cai no mesmo layout individual.
+  - `BookingFlow` ganhou props `members?: BookingProChoice[]` e
+    `onPickPro?: (slug) => void`. Quando `members.length > 1`,
+    insere step `professional` com cards (avatar + nome) pra
+    visitante escolher. Trocar o pro limpa `date`/`slotISO`
+    (business_hours do novo pro podem diferir), notifica o pai e
+    avança pra `when`. Pai re-fetch via `usePublicProfessional`
+    pra pegar os settings corretos do pro escolhido.
+  - Prefetch dos membros no mount do owner-landing continua —
+    agora serve pra que a troca no modal seja instantânea.
+  - Deep-link a `/p/<member-slug>` segue redirecionando pra
+    `/p/<owner-slug>` (v0.4.4).
+
+  Nenhuma mudança de DB. Só frontend.
+
 - **2026-10-09** — **Services compartilhados pela equipe (v0.4.6, migration 0038).**
 
   Services deixam de ser por `professional_id` e passam a ser por

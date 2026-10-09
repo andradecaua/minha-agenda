@@ -2,16 +2,13 @@ import { useEffect, useState } from 'react'
 import { Link, Navigate, useParams } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import {
-  ArrowRight,
   CalendarCheck,
   Clock,
-  Loader2,
   MapPin,
   MessageCircle,
   Package,
   Phone,
   Scissors,
-  Users2,
   X,
 } from 'lucide-react'
 
@@ -22,11 +19,11 @@ import { formatCurrencyBRL, formatMinutesDuration } from '@/lib/utils'
 import { formatPhoneBR, isValidPhoneBR, telLink, waLinkBR } from '@/lib/phone'
 import { getIcon } from '@/lib/icons'
 import type { PortfolioItem, Product, Service } from '@/types/database'
+import { getPublicProfessional } from '@/services/public-profile'
 import {
-  getPublicProfessional,
-  type PublicTeamSummary,
-} from '@/services/public-profile'
-import { BookingFlow } from '@/pages/public/booking/BookingFlow'
+  BookingFlow,
+  type BookingProChoice,
+} from '@/pages/public/booking/BookingFlow'
 
 export function ProfessionalPage() {
   const { slug } = useParams<{ slug: string }>()
@@ -34,8 +31,10 @@ export function ProfessionalPage() {
   const { data, isLoading, isError, refetch } = usePublicProfessional(slug)
 
   // Slug do pro que o visitante quer reservar. `null` = modal fechado.
-  // Pode apontar pro próprio dono da página (solo team) ou pra qualquer
-  // membro clicado no TeamOverview. Carrega lazy via usePublicProfessional.
+  // No open inicial é o dono da página (profile.slug). Quando a
+  // equipe tem múltiplos membros, o BookingFlow permite trocar — a
+  // callback `onPickPro` troca essa flag e re-renderiza com os dados
+  // do novo pro. Carrega lazy via usePublicProfessional.
   const [bookingProSlug, setBookingProSlug] = useState<string | null>(null)
   const bookingProQuery = usePublicProfessional(bookingProSlug ?? undefined)
 
@@ -53,14 +52,15 @@ export function ProfessionalPage() {
     ogImage: data?.profile.avatar_url ?? data?.portfolio[0]?.image_url ?? undefined,
   })
 
-  // Pré-carrega dados dos membros da equipe pra que o modal de booking
-  // abra sem latência quando o visitante clica num card da TeamOverview.
-  const isTeamOwnerLanding =
+  // Pré-carrega dados dos membros da equipe pra que a troca de pro
+  // dentro do BookingFlow (passo `professional`) seja instantânea —
+  // settings/business_hours de cada pro já ficam quentes no cache.
+  const isOwnerOfMultiTeam =
     !!data?.team &&
     data.team.members.length > 1 &&
     data.team.owner_user_id === data.profile.user_id
   useEffect(() => {
-    if (!isTeamOwnerLanding || !data?.team) return
+    if (!isOwnerOfMultiTeam || !data?.team) return
     for (const m of data.team.members) {
       if (m.slug === slug) continue // já carregado como profile principal
       void qc.prefetchQuery({
@@ -69,7 +69,7 @@ export function ProfessionalPage() {
         staleTime: 2 * 60 * 1000,
       })
     }
-  }, [isTeamOwnerLanding, data, slug, qc])
+  }, [isOwnerOfMultiTeam, data, slug, qc])
 
   if (isLoading) {
     return <PublicShell><LoadingState /></PublicShell>
@@ -90,32 +90,20 @@ export function ProfessionalPage() {
     return <Navigate to={`/p/${ownerSlug}`} replace />
   }
 
-  // Owner de equipe multi → vitrine do time (ninguém chega aqui
-  // "direto do booking" porque members não têm mais página individual).
-  if (isTeamOwnerLanding) {
-    return (
-      <PublicShell>
-        <TeamOverview
-          team={team!}
-          portfolio={portfolio}
-          onBookWithPro={(proSlug) => setBookingProSlug(proSlug)}
-          loadingProSlug={bookingProQuery.isFetching ? bookingProSlug : null}
-        />
-        <BookingPortal
-          data={bookingProQuery.data ?? null}
-          onClose={() => {
-            setBookingProSlug(null)
-            void refetch()
-          }}
-        />
-      </PublicShell>
-    )
-  }
-
-  // Solo team (ou membro que ficou numa equipe só com ele por algum
-  // motivo histórico) — página individual tradicional.
+  // A página do owner (seja solo ou time multi) é sempre o layout
+  // individual: hero + portfolio + services + CTA. Quando o time
+  // tem 2+ membros, o BookingFlow mostra um passo de seleção de
+  // profissional (não há mais vitrine com cards).
   const bookingDisabled =
     !settings?.online_booking_enabled || services.length === 0
+  const bookingMembers: BookingProChoice[] | undefined =
+    team && team.members.length > 1
+      ? team.members.map((m) => ({
+          slug: m.slug,
+          name: m.name,
+          avatar_url: m.avatar_url,
+        }))
+      : undefined
 
   return (
     <PublicShell>
@@ -160,6 +148,8 @@ export function ProfessionalPage() {
 
       <BookingPortal
         data={bookingProQuery.data ?? null}
+        members={bookingMembers}
+        onPickPro={(nextSlug) => setBookingProSlug(nextSlug)}
         onClose={() => {
           setBookingProSlug(null)
           void refetch()
@@ -172,13 +162,19 @@ export function ProfessionalPage() {
 /**
  * Wrapper fino do BookingFlow que só monta quando os dados do pro
  * alvo estão prontos. Previne flash de modal vazio enquanto o
- * `usePublicProfessional` busca o pro escolhido no TeamOverview.
+ * `usePublicProfessional` busca o pro escolhido (seja o owner no
+ * primeiro open, seja outro membro quando o visitante troca no
+ * passo `professional`).
  */
 function BookingPortal({
   data,
+  members,
+  onPickPro,
   onClose,
 }: {
   data: Awaited<ReturnType<typeof getPublicProfessional>> | null
+  members?: BookingProChoice[]
+  onPickPro?: (slug: string) => void
   onClose: () => void
 }) {
   if (!data) return null
@@ -190,6 +186,8 @@ function BookingPortal({
       professionalName={data.profile.name}
       services={data.services}
       settings={data.settings}
+      members={members}
+      onPickPro={onPickPro}
     />
   )
 }
@@ -285,147 +283,6 @@ function Avatar({ url, name }: { url: string | null; name: string }) {
   return (
     <div
       className="flex h-28 w-28 items-center justify-center rounded-full border-4 border-background bg-primary/10 text-3xl font-semibold text-primary shadow-xl sm:h-36 sm:w-36 sm:text-4xl lg:h-40 lg:w-40 lg:text-5xl"
-      aria-hidden="true"
-    >
-      {initials || '?'}
-    </div>
-  )
-}
-
-/* ============================================================
- * EQUIPE — overview "pick a professional"
- * ============================================================ */
-
-interface TeamOverviewProps {
-  team: PublicTeamSummary
-  portfolio: PortfolioItem[]
-  /** Callback disparado quando o visitante clica num card. Abre o
-   *  BookingFlow com os dados do pro escolhido (busca lazy). */
-  onBookWithPro: (proSlug: string) => void
-  /** Slug do pro cujo card está esperando a query completar. Usado
-   *  pra desenhar o loader no card certo em vez de na página inteira. */
-  loadingProSlug: string | null
-}
-
-function TeamOverview({ team, portfolio, onBookWithPro, loadingProSlug }: TeamOverviewProps) {
-  // Hero puxa o nome DIRETAMENTE do profile do owner (fresh em cada
-  // fetch da página pública) em vez de `teams.name`. `teams.name` é
-  // auto-preenchido no provision mas nunca sincroniza quando o owner
-  // edita `profile.name` — exibi-lo aqui causa o nome "antigo" ficar
-  // preso na vitrine. Fallback pro team.name se por algum motivo o
-  // owner não estiver na lista de membros (não deveria acontecer).
-  const owner = team.members.find((m) => m.role === 'owner')
-  const heroName = owner?.name ?? team.name
-  return (
-    <>
-      <header className="relative overflow-hidden">
-        <div
-          className="absolute inset-x-0 top-0 h-64 bg-gradient-to-b from-primary/10 via-primary/5 to-transparent sm:h-72 lg:h-80"
-          aria-hidden="true"
-        />
-        <div className="relative mx-auto flex max-w-6xl flex-col items-center px-4 pt-12 pb-6 text-center sm:px-6 sm:pt-16 lg:px-8 lg:pt-20">
-          <div
-            className="flex h-20 w-20 items-center justify-center rounded-2xl bg-primary/10 text-primary shadow-xl sm:h-24 sm:w-24"
-            aria-hidden="true"
-          >
-            <Users2 className="h-10 w-10 sm:h-12 sm:w-12" />
-          </div>
-          <h1 className="mt-5 text-3xl font-semibold tracking-tight sm:text-4xl lg:text-5xl">
-            {heroName}
-          </h1>
-          <p className="mt-3 text-sm text-muted-foreground sm:text-base">
-            Escolha um profissional pra reservar.
-          </p>
-        </div>
-      </header>
-
-      <div className="mx-auto w-full max-w-6xl px-4 pb-24 sm:px-6 lg:px-8">
-        {portfolio.length > 0 && <PortfolioGallery items={portfolio} />}
-
-        <section className="pt-6 lg:pt-10">
-          <h2 className="mb-5 text-2xl font-semibold tracking-tight lg:text-3xl">
-            Profissionais
-          </h2>
-          <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {team.members.map((m) => {
-              const isOwner = m.role === 'owner'
-              const loading = loadingProSlug === m.slug
-              return (
-                <li key={m.user_id}>
-                  <button
-                    type="button"
-                    onClick={() => onBookWithPro(m.slug)}
-                    disabled={loading}
-                    className="group flex h-full w-full flex-col items-center rounded-xl border bg-background p-5 text-center transition-colors hover:border-primary/40 hover:bg-accent/40 disabled:cursor-wait disabled:opacity-70"
-                  >
-                    <ProAvatar name={m.name} url={m.avatar_url} />
-                    <div className="mt-3 flex items-center gap-2">
-                      <h3 className="font-medium">{m.name}</h3>
-                      {isOwner && (
-                        <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
-                          Dono
-                        </span>
-                      )}
-                    </div>
-                    {m.city && (
-                      <p className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground">
-                        <MapPin className="h-3 w-3" aria-hidden="true" />
-                        {m.city}
-                      </p>
-                    )}
-                    {m.bio && (
-                      <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
-                        {m.bio}
-                      </p>
-                    )}
-                    <span className="mt-4 inline-flex items-center gap-1 text-xs font-medium text-primary group-hover:underline">
-                      {loading ? (
-                        <>
-                          <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
-                          Abrindo...
-                        </>
-                      ) : (
-                        <>
-                          Reservar com {m.name.split(' ')[0]}
-                          <ArrowRight className="h-3 w-3" aria-hidden="true" />
-                        </>
-                      )}
-                    </span>
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
-        </section>
-
-        <footer className="pt-10 text-center text-xs text-muted-foreground">
-          Agende com segurança · Minha Agenda
-        </footer>
-      </div>
-    </>
-  )
-}
-
-function ProAvatar({ name, url }: { name: string; url: string | null }) {
-  const initials = name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((p) => p[0]?.toUpperCase() ?? '')
-    .join('')
-  if (url) {
-    return (
-      <img
-        src={url}
-        alt=""
-        className="h-16 w-16 rounded-full border bg-muted object-cover"
-        loading="lazy"
-      />
-    )
-  }
-  return (
-    <div
-      className="flex h-16 w-16 items-center justify-center rounded-full border bg-primary/10 text-lg font-semibold text-primary"
       aria-hidden="true"
     >
       {initials || '?'}

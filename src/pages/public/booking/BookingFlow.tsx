@@ -18,6 +18,18 @@ import { cn } from '@/lib/utils'
 import { DateStrip } from './DateStrip'
 import { SlotsGrid } from './SlotsGrid'
 
+/**
+ * Membro da equipe (ou pro individual) exposto no passo de seleção.
+ * Usamos só os campos exibidos no card — o `slug` é a chave que o pai
+ * usa pra re-fetch dos dados completos (settings/business_hours) ao
+ * trocar de pro.
+ */
+export interface BookingProChoice {
+  slug: string
+  name: string
+  avatar_url: string | null
+}
+
 interface BookingFlowProps {
   open: boolean
   onClose: () => void
@@ -25,9 +37,22 @@ interface BookingFlowProps {
   professionalName: string
   services: Service[]
   settings: BookingSettings | null
+  /**
+   * Lista de pros disponíveis pra escolha dentro do modal. Quando
+   * `undefined` ou com 1 elemento, pulamos o passo de seleção
+   * (comportamento solo). Com 2+ elementos, inserimos step
+   * `professional` entre `services` e `when`.
+   */
+  members?: BookingProChoice[]
+  /**
+   * Chamado quando o visitante escolhe um pro no step `professional`.
+   * O pai re-fetch os dados daquele pro (settings) via
+   * `usePublicProfessional(slug)` e feed de volta as novas props.
+   */
+  onPickPro?: (slug: string) => void
 }
 
-type Step = 'services' | 'when' | 'details'
+type Step = 'services' | 'professional' | 'when' | 'details'
 
 export function BookingFlow({
   open,
@@ -36,7 +61,10 @@ export function BookingFlow({
   professionalName,
   services,
   settings,
+  members,
+  onPickPro,
 }: BookingFlowProps) {
+  const hasPicker = (members?.length ?? 0) > 1
   const navigate = useNavigate()
   const [step, setStep] = useState<Step>('services')
   const [selectedIds, setSelectedIds] = useState<string[]>([])
@@ -133,6 +161,7 @@ export function BookingFlow({
 
   const title = useMemo(() => {
     if (step === 'services') return 'Escolha os serviços'
+    if (step === 'professional') return 'Com quem?'
     if (step === 'when') return 'Quando?'
     if (step === 'details') return 'Seus dados'
     return 'Agendar'
@@ -140,17 +169,22 @@ export function BookingFlow({
 
   const description = useMemo(() => {
     if (step === 'services')
-      return `Com ${professionalName}. Selecione um ou mais.`
+      return hasPicker
+        ? 'Selecione um ou mais serviços.'
+        : `Com ${professionalName}. Selecione um ou mais.`
+    if (step === 'professional')
+      return 'Escolha o profissional que vai te atender.'
     if (step === 'when' && selectedServices.length > 0)
-      return `${selectedServices.length} ${selectedServices.length === 1 ? 'serviço' : 'serviços'} · ${formatMinutesDuration(totalDuration)} · ${formatCurrencyBRL(totalPrice)}`
+      return `${selectedServices.length} ${selectedServices.length === 1 ? 'serviço' : 'serviços'} · ${formatMinutesDuration(totalDuration)} · ${formatCurrencyBRL(totalPrice)} · com ${professionalName}`
     if (step === 'details') return 'Para confirmarmos sua reserva.'
     return undefined
-  }, [step, selectedServices.length, totalDuration, totalPrice, professionalName])
+  }, [step, selectedServices.length, totalDuration, totalPrice, professionalName, hasPicker])
 
   function back() {
     setFormError(null)
     if (step === 'details') setStep('when')
-    else if (step === 'when') setStep('services')
+    else if (step === 'when') setStep(hasPicker ? 'professional' : 'services')
+    else if (step === 'professional') setStep('services')
   }
 
   function toggleService(id: string) {
@@ -191,7 +225,27 @@ export function BookingFlow({
           onToggle={toggleService}
           totalDuration={totalDuration}
           totalPrice={totalPrice}
-          onContinue={() => setStep('when')}
+          onContinue={() => setStep(hasPicker ? 'professional' : 'when')}
+        />
+      )}
+
+      {step === 'professional' && hasPicker && (
+        <ProfessionalStep
+          members={members!}
+          activeSlug={slug}
+          onPick={(nextSlug) => {
+            // Avisa o pai pra fetch dos dados daquele pro (settings
+            // mudam, services são team-shared e seguem iguais).
+            // Avança o step aqui mesmo; o pai re-renderiza com as
+            // novas props, mas o step já é 'when'.
+            onPickPro?.(nextSlug)
+            // Reset date/slot — business_hours do novo pro podem
+            // diferir, então o que o cliente escolheu antes deixa de
+            // valer.
+            setDate(null)
+            setSlotISO(null)
+            setStep('when')
+          }}
         />
       )}
 
@@ -235,6 +289,71 @@ export function BookingFlow({
       )}
 
     </Dialog>
+  )
+}
+
+/* ============================================================
+ * Step: Profissional (seleção quando o time tem 2+ pros)
+ * ============================================================ */
+
+interface ProfessionalStepProps {
+  members: BookingProChoice[]
+  activeSlug: string
+  onPick: (slug: string) => void
+}
+
+function ProfessionalStep({ members, activeSlug, onPick }: ProfessionalStepProps) {
+  return (
+    <ul className="grid gap-2 sm:grid-cols-2">
+      {members.map((m) => {
+        const active = m.slug === activeSlug
+        return (
+          <li key={m.slug}>
+            <button
+              type="button"
+              onClick={() => onPick(m.slug)}
+              aria-pressed={active}
+              className={cn(
+                'flex w-full flex-col items-center gap-3 rounded-xl border p-5 text-center transition-colors',
+                active
+                  ? 'border-primary bg-primary/5'
+                  : 'bg-background hover:border-foreground/20 hover:bg-accent/40',
+              )}
+            >
+              <ProAvatar name={m.name} url={m.avatar_url} />
+              <span className="font-medium">{m.name}</span>
+            </button>
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
+function ProAvatar({ name, url }: { name: string; url: string | null }) {
+  const initials = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]?.toUpperCase() ?? '')
+    .join('')
+  if (url) {
+    return (
+      <img
+        src={url}
+        alt={`Foto de ${name}`}
+        className="h-14 w-14 rounded-full border bg-muted object-cover"
+        loading="lazy"
+      />
+    )
+  }
+  return (
+    <div
+      className="flex h-14 w-14 items-center justify-center rounded-full border bg-primary/10 text-base font-semibold text-primary"
+      aria-hidden="true"
+    >
+      {initials || '?'}
+    </div>
   )
 }
 
