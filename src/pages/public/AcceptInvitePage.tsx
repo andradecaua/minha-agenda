@@ -31,6 +31,7 @@ export function AcceptInvitePage() {
   const [loadErr, setLoadErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
+  const [name, setName] = useState('')
   const [password, setPassword] = useState('')
   const [passwordConfirm, setPasswordConfirm] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -66,6 +67,15 @@ export function AcceptInvitePage() {
     if (!token || !invite) return
     setSubmitErr(null)
 
+    const trimmedName = name.trim()
+    if (trimmedName.length < 2) {
+      setSubmitErr('Digite seu nome (pelo menos 2 caracteres).')
+      return
+    }
+    if (trimmedName.length > 60) {
+      setSubmitErr('Nome muito longo (máx. 60 caracteres).')
+      return
+    }
     if (password.length < 6) {
       setSubmitErr('A senha precisa ter pelo menos 6 caracteres.')
       return
@@ -77,7 +87,7 @@ export function AcceptInvitePage() {
 
     setSubmitting(true)
     try {
-      const { email } = await acceptInvite(token, password)
+      const { email } = await acceptInvite(token, password, trimmedName)
       // Login automático pra cair direto no dashboard
       try {
         await signIn(email, password)
@@ -147,6 +157,20 @@ export function AcceptInvitePage() {
             <div className="space-y-1.5">
               <Label>Email</Label>
               <Input value={invite.email} readOnly disabled />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="invite-name">Seu nome</Label>
+              <Input
+                id="invite-name"
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                autoComplete="name"
+                required
+                maxLength={60}
+                placeholder="Como você quer aparecer na página pública"
+                disabled={submitting}
+              />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="invite-pw">Defina uma senha</Label>

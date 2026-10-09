@@ -43,6 +43,7 @@ const ERROR_LABEL: Record<string, string> = {
   already_in_team: 'Você já está em outra equipe.',
   paid_plan_in_use: 'Sua equipe atual tem plano pago. Cancele antes de aceitar outro convite.',
   weak_password: 'A senha precisa ter pelo menos 6 caracteres.',
+  invalid_name: 'Digite um nome entre 2 e 60 caracteres.',
   set_password_failed: 'Não foi possível salvar a senha. Tente novamente.',
   user_not_found: 'Conta não encontrada. Peça para a equipe reenviar o convite.',
 }
@@ -111,16 +112,18 @@ export async function resolveInvite(token: string): Promise<ResolvedInvite> {
 }
 
 /**
- * Aceita o convite — chama a edge function que seta senha e move
- * o user pro team. Retorna o email pra o frontend conseguir fazer
- * signIn automaticamente logo depois.
+ * Aceita o convite — chama a edge function que seta senha, atualiza
+ * o nome do profile (que vinha com o email_prefix como fallback) e
+ * move o user pro team. Retorna o email pra o frontend conseguir
+ * fazer signIn automaticamente logo depois.
  */
 export async function acceptInvite(
   token: string,
   password: string,
+  name: string,
 ): Promise<{ email: string; team_id: string }> {
   const { data, error } = await supabase.functions.invoke('accept-team-invite', {
-    body: { token, password },
+    body: { token, password, name },
   })
   if (error) {
     // Edge function retorna status=error no body do erro.

@@ -24,6 +24,32 @@ import { serviceClient } from '../_shared/supabase.ts'
 interface Body {
   token?: string
   password?: string
+  /**
+   * Nome que o convidado quer usar no profile público. Obrigatório
+   * desde v0.4.3 — antes o profile.name caía no fallback
+   * `split_part(email, '@', 1)` (ex.: "joao.silva") e aparecia como
+   * se fosse um email na página pública da equipe.
+   */
+  name?: string
+}
+
+/**
+ * Slugifica no mesmo espírito do `public.slugify` do Postgres:
+ * remove acentos, lowercase, troca não-alfanumérico por `-`, colapsa
+ * `--` e tira hífens das pontas. Mantemos aqui pra evitar criar uma
+ * nova RPC só pra isso.
+ */
+function slugify(input: string): string {
+  return input
+    .normalize('NFD')
+    // U+0300–U+036F: faixa dos "combining diacritical marks" (acentos
+    // soltos após o NFD). Esse é o truque pra tirar diacríticos sem
+    // depender de lib externa.
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
 }
 
 Deno.serve(async (req) => {
@@ -42,8 +68,12 @@ Deno.serve(async (req) => {
 
     const token = (body.token ?? '').trim()
     const password = (body.password ?? '').trim()
+    const name = (body.name ?? '').trim()
     if (!token) return errorResponse('missing_token', 400)
     if (password.length < 6) return errorResponse('weak_password', 400)
+    if (name.length < 2 || name.length > 60) {
+      return errorResponse('invalid_name', 400)
+    }
 
     const db = serviceClient()
 
@@ -103,6 +133,37 @@ Deno.serve(async (req) => {
     }
     if (acceptResult.status !== 'ok') {
       return errorResponse(acceptResult.error ?? 'accept_rejected', 400)
+    }
+
+    // Atualiza profile.name e re-gera slug. Antes vinha o email_prefix
+    // (via handle_new_user fallback) e isso vazava na página pública
+    // da equipe como "joao.silva" com cara de email. Best-effort: se
+    // falhar, o accept em si já deu certo — o member pode editar
+    // depois em /dashboard/configuracoes/perfil.
+    try {
+      const baseSlug = slugify(name) || 'prof'
+      let attempt = 0
+      let newSlug = baseSlug
+      while (attempt < 10) {
+        const { error: updErr } = await db
+          .from('profiles')
+          .update({ name, slug: newSlug })
+          .eq('user_id', user.id)
+        if (!updErr) break
+        const msg = (updErr.message ?? '').toLowerCase()
+        const isUniqueViolation =
+          msg.includes('duplicate key') ||
+          msg.includes('unique') ||
+          updErr.code === '23505'
+        if (!isUniqueViolation) {
+          console.warn('[accept-team-invite] profile update:', updErr.message)
+          break
+        }
+        attempt += 1
+        newSlug = `${baseSlug}-${Math.random().toString(36).slice(2, 8)}`
+      }
+    } catch (profileErr) {
+      console.warn('[accept-team-invite] profile update threw:', profileErr)
     }
 
     return jsonResponse({

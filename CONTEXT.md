@@ -667,6 +667,44 @@ Se faltar atualização, considere a entrega incompleta.
 
 ## Changelog
 
+- **2026-10-09** — **Aceite de convite pede nome do membro (v0.4.3).**
+
+  Fluxo de convite tinha um defeito cosmético que ficou visível depois
+  do primeiro aceite real: a `send-team-invite` pré-cria o
+  `auth.users` do convidado via `auth.admin.createUser({email,
+  email_confirm: true})` sem passar `name` nos metadados, então o
+  trigger `handle_new_user` → `provision_profile_for_user` caía no
+  fallback `v_display_name := split_part(p_email, '@', 1)`. Resultado:
+  `profile.name` virava "joao.silva" e aparecia como se fosse um
+  email no card da `TeamOverview` em `/p/<owner-slug>`.
+
+  **Fix:**
+  - `AcceptInvitePage` ganha campo obrigatório "Seu nome" (2–60
+    chars), posicionado antes da senha. É aqui que o convidado
+    decide como vai aparecer na página pública.
+  - `services/team-invites.ts:acceptInvite` propaga o `name` pro
+    body da edge function.
+  - `accept-team-invite` recebe `name`, valida (2–60 chars) e,
+    DEPOIS de `accept_team_invite_server` ter sucesso, atualiza
+    `profiles.name` + re-slugifica (`profiles.slug`) via service
+    role. Collision de slug tratada com sufixo random (até 10
+    tentativas). Falha no update é só warning — o accept em si
+    já deu certo e o membro pode editar em
+    `/dashboard/configuracoes/perfil`.
+  - Slugify replicado em JS no edge (mesmo espírito do
+    `public.slugify` do Postgres: NFD → remove faixa U+0300-U+036F
+    → lowercase → troca `[^a-z0-9]+` por `-` → trim). Evita criar
+    RPC só pra isso.
+
+  **Setup pós-deploy:**
+  ```
+  supabase functions deploy accept-team-invite
+  ```
+
+  **Membro existente com nome errado?** Pede pra entrar em
+  `/dashboard/configuracoes/perfil` e editar o nome/slug — a tela
+  já suporta isso.
+
 - **2026-10-09** — **Recovery link não loga mais sozinho + signOut limpa sessão (v0.4.2, migration 0037).**
 
   Dois reforços de segurança no fluxo de senha/sessão:
