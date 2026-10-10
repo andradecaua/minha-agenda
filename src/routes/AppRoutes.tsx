@@ -92,6 +92,11 @@ const SubscriptionPage = lazy(() =>
     default: m.SubscriptionPage,
   })),
 )
+const NotificationsPage = lazy(() =>
+  import('@/pages/dashboard/settings/NotificationsPage').then((m) => ({
+    default: m.NotificationsPage,
+  })),
+)
 const SupportPage = lazy(() =>
   import('@/pages/dashboard/support/SupportPage').then((m) => ({
     default: m.SupportPage,
@@ -280,6 +285,7 @@ export function AppRoutes() {
               <Route path="perfil" element={<ProfilePage />} />
               <Route path="horarios" element={<BusinessHoursPage />} />
               <Route path="agendamento" element={<BookingSettingsPage />} />
+              <Route path="notificacoes" element={<NotificationsPage />} />
               <Route path="assinatura" element={<SubscriptionPage />} />
             </Route>
           </Route>

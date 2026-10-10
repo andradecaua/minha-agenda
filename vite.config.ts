@@ -21,6 +21,14 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
+      // `injectManifest` (em vez de `generateSW`) porque o SW tem
+      // handlers custom de `push` + `notificationclick` pra Web Push
+      // (0041). O arquivo-fonte vive em `src/sw/sw.ts` e importa os
+      // módulos workbox que antes eram declarativos no bloco
+      // `workbox` abaixo (que agora alimenta `injectManifest`).
+      strategies: 'injectManifest',
+      srcDir: 'src/sw',
+      filename: 'sw.ts',
       // 'prompt': novo SW instala em background mas aguarda confirmação
       // pra ativar. O frontend usa `useRegisterSW` em
       // `PwaUpdateBanner` pra mostrar "Nova versão disponível" com um
@@ -71,39 +79,12 @@ export default defineConfig({
           },
         ],
       },
-      workbox: {
+      injectManifest: {
         // Precache do shell (index.html + bundles do Vite + CSS + ícones).
         // Cada novo build gera hashes diferentes → o SW baixa só o que
-        // mudou e substitui atomicamente.
+        // mudou e substitui atomicamente. Runtime caching e navigation
+        // fallback agora vivem no `src/sw/sw.ts` como código.
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
-        // Fontes do Google são buscadas via rede → cache first com TTL
-        // generoso. Melhora o 2º carregamento sem travar atualizações.
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'google-fonts-stylesheets',
-              expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 365 },
-            },
-          },
-          {
-            urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'google-fonts-webfonts',
-              expiration: { maxEntries: 30, maxAgeSeconds: 60 * 60 * 24 * 365 },
-              cacheableResponse: { statuses: [0, 200] },
-            },
-          },
-        ],
-        // Navegações desconhecidas (`/dashboard/*`) sempre caem no
-        // index.html precacheado — isso faz o SPA abrir offline mesmo
-        // em deep-links. O App Router cuida do resto.
-        navigateFallback: '/index.html',
-        // Exceções: deixa requests pro Supabase e pra funções passarem
-        // direto pra rede — nunca servir dados stale sem awareness.
-        navigateFallbackDenylist: [/^\/api\//, /^\/auth\//, /\/functions\//],
       },
       devOptions: {
         // Em dev o SW fica desligado por padrão — habilitar sob demanda

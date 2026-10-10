@@ -1,11 +1,12 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import { CalendarClock, CreditCard, SlidersHorizontal, User } from 'lucide-react'
+import { Bell, CalendarClock, CreditCard, SlidersHorizontal, User } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const ITEMS = [
   { to: '/dashboard/configuracoes/perfil', label: 'Perfil', icon: User },
   { to: '/dashboard/configuracoes/horarios', label: 'Horários', icon: CalendarClock },
   { to: '/dashboard/configuracoes/agendamento', label: 'Agendamento', icon: SlidersHorizontal },
+  { to: '/dashboard/configuracoes/notificacoes', label: 'Notificações', icon: Bell },
   { to: '/dashboard/configuracoes/assinatura', label: 'Assinatura', icon: CreditCard },
 ]
 

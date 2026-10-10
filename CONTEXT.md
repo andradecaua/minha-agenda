@@ -667,6 +667,94 @@ Se faltar atualização, considere a entrega incompleta.
 
 ## Changelog
 
+- **2026-10-10** — **Web Push: notificações pros pros em eventos de agendamento (v0.5.0 · 0041).**
+
+  Primeiro bloco de notificações push nativas. Hoje: pro recebe
+  alerta quando um cliente marca ou cancela pela página pública.
+  Email transacional continua intocado — push é camada de imediatismo
+  por cima, não substituto.
+
+  **Banco** (`0041_push_subscriptions.sql`):
+  - Tabela `push_subscriptions` (user_id × endpoint único, p256dh,
+    auth_token, revoked_at). RLS: SELECT/DELETE só o próprio dono.
+  - RPCs `register_push_subscription` / `remove_push_subscription`
+    (SECURITY DEFINER). INSERT/UPDATE da tabela só rolam via RPC.
+  - Trigger `notify_push_appointment` em `appointments`:
+    - `AFTER INSERT`                      → event `appointment_created`
+    - `AFTER UPDATE OF status` → `cancelled` → event `appointment_cancelled`
+    - Pula quando `auth.uid()` = dono do perfil atendido (o pro criando
+      pelo próprio dashboard não dispara push pra si mesmo).
+    - Chama a edge `send-push` via `net.http_post` fire-and-forget.
+      URL + service role vêm do Vault (`edge_send_push_url`,
+      `edge_service_role`). Se faltarem, trigger não quebra o insert.
+
+  **Edge function** `supabase/functions/send-push/index.ts`:
+  - Autenticada por `Authorization: Bearer <SERVICE_ROLE>`.
+    Não aceita JWT de user — endpoint é só pra Postgres.
+  - Entrada `{ event, user_id, appointment_id }`. Monta title/body
+    em pt-BR com `America/Sao_Paulo`, envia via `npm:web-push@3`.
+  - 404/410 marca `revoked_at`; sucesso atualiza `last_used_at`.
+  - Secrets: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`.
+
+  **Service Worker** (`src/sw/sw.ts`, migrou de `generateSW` →
+  `injectManifest` no `vite.config.ts`). Mantém o shell precache +
+  Google Fonts CacheFirst + navigation fallback, e ganha:
+  - `push`              → `showNotification` com icon/badge/tag/data.url
+  - `notificationclick` → foca aba `/dashboard/*` existente ou abre `/dashboard/agenda`
+  - `message SKIP_WAITING` continua funcionando pro `PwaUpdateBanner`.
+
+  **Frontend**:
+  - `src/lib/push.ts` — `getPushStatus()`, `enablePush()`, `disablePush()`.
+    `PushStatus` cobre `unsupported | unconfigured | denied | default
+    | granted-off | subscribed`.
+  - Hook `usePushStatus` + mutations em `src/hooks/queries/usePushStatus.ts`.
+  - Nova página `/dashboard/configuracoes/notificacoes`
+    (`NotificationsPage`). Card com toggle, badge de status, hint
+    explícito pra iOS (precisa instalar o PWA pra funcionar — iOS 16.4+).
+  - `VITE_VAPID_PUBLIC_KEY` em `.env.local`. Chave pública embutida no
+    bundle; privada vive só nos secrets do Supabase.
+  - Script zero-dep `scripts/generate-vapid.mjs` (Node 18+ via
+    `node:crypto`) imprime o par pra copiar nos lugares certos.
+
+  **Deploy — passos pós-aplicar a migration**:
+
+  1. Rodar `node scripts/generate-vapid.mjs` e salvar o par.
+  2. `.env.local` ganha `VITE_VAPID_PUBLIC_KEY=<pub>` → rebuild do app.
+  3. Supabase > Edge Functions > Secrets:
+     - `VAPID_PUBLIC_KEY=<pub>`
+     - `VAPID_PRIVATE_KEY=<priv>`
+     - `VAPID_SUBJECT=mailto:suporte@seudominio.com`
+  4. `supabase functions deploy send-push`.
+  5. No SQL Editor (precisa Vault habilitado):
+     ```sql
+     select vault.create_secret(
+       'https://<proj>.supabase.co/functions/v1/send-push',
+       'edge_send_push_url'
+     );
+     select vault.create_secret(
+       '<SERVICE_ROLE_KEY>',
+       'edge_service_role'
+     );
+     ```
+     (Se `edge_send_push_url`/`edge_service_role` já existem, use
+     `vault.update_secret` em vez de `create_secret`.)
+  6. User abre `/dashboard/configuracoes/notificacoes`, aceita o
+     prompt do browser e testa marcando um appointment pelo link público.
+
+  **Trade-offs e limites conhecidos**:
+  - iOS só entrega push dentro de PWA instalado (iOS 16.4+). UI
+    explica isso no card dedicado.
+  - Permissão negada "queima" o canal (browser lembra); user tem
+    que ir nas configs do site. Botão "Ativar" desabilita no estado
+    `denied` pra evitar frustração.
+  - Push é best-effort; eventos críticos (ex: lembretes) devem
+    continuar indo também por email.
+
+  **Deixado pra próximas iterações** (v2+):
+  - Lembretes agendados (pg_cron 1h/24h antes do atendimento).
+  - Notificação diferenciada pra membros de equipe não-owner.
+  - Preferências granulares (toggle por tipo de evento).
+
 - **2026-10-10** — **Dashboard: lista "Próximos agendamentos" (v0.4.11).**
 
   Nova seção na home do dashboard (`DashboardHomePage`), entre o
