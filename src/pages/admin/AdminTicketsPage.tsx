@@ -103,7 +103,7 @@ export function AdminTicketsPage() {
         <Card>
           <CardContent className="flex items-center gap-3 py-10 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
-            Carregando tickets...
+            Carregando tickets…
           </CardContent>
         </Card>
       ) : error ? (

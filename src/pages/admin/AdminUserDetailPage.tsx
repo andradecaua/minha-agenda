@@ -67,7 +67,7 @@ export function AdminUserDetailPage() {
     return (
       <div className="flex items-center gap-2 py-10 text-sm text-muted-foreground">
         <Loader2 className="h-4 w-4 animate-spin" />
-        Carregando relatório...
+        Carregando relatório…
       </div>
     )
   }
@@ -318,7 +318,7 @@ function EditProfileDialog({ userId, initial, onClose, onSaved }: EditProfileDia
             Cancelar
           </Button>
           <Button onClick={(e) => handleSave(e as unknown as React.FormEvent)} disabled={saving}>
-            {saving ? 'Salvando...' : 'Salvar'}
+            {saving ? 'Salvando…' : 'Salvar'}
           </Button>
         </>
       }
@@ -415,7 +415,7 @@ function AssignPlanDialog({
             Cancelar
           </Button>
           <Button onClick={(e) => handleSave(e as unknown as React.FormEvent)} disabled={saving || !planId}>
-            {saving ? 'Salvando...' : 'Salvar'}
+            {saving ? 'Salvando…' : 'Salvar'}
           </Button>
         </>
       }
@@ -430,9 +430,9 @@ function AssignPlanDialog({
             className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
             required
           >
-            <option value="">Selecione...</option>
+            <option value="">Selecione…</option>
             {isLoading ? (
-              <option disabled>Carregando...</option>
+              <option disabled>Carregando…</option>
             ) : (
               plans?.map((p) => (
                 <option key={p.id} value={p.id}>

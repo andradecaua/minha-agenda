@@ -91,7 +91,7 @@ export function AppointmentDetailsDialog({
           <section className="space-y-2">
             <h3 className="text-sm font-medium">Cliente</h3>
             <div className="rounded-xl border bg-muted/20 p-3">
-              <p className="font-medium">{appointment.client.name}</p>
+              <p className="break-words font-medium">{appointment.client.name}</p>
               {appointment.client.phone && (
                 <p className="text-sm text-muted-foreground">
                   {formatPhoneBR(appointment.client.phone)}
@@ -221,7 +221,7 @@ export function AppointmentDetailsDialog({
               {mutation.isPending && (
                 <span className="inline-flex items-center gap-1 text-sm text-muted-foreground">
                   <Loader2 className="h-3 w-3 animate-spin" />
-                  atualizando...
+                  atualizando…
                 </span>
               )}
             </div>

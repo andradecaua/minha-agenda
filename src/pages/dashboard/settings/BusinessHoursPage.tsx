@@ -219,7 +219,7 @@ export function BusinessHoursPage() {
                     disabled={isSaving}
                     onClick={() => saveDay(wd.value)}
                   >
-                    {isSaving ? 'Salvando...' : isSaved ? 'Salvo!' : 'Salvar'}
+                    {isSaving ? 'Salvando…' : isSaved ? 'Salvo!' : 'Salvar'}
                   </Button>
                 </div>
 

@@ -109,7 +109,7 @@ export function AcceptInvitePage() {
         <Card>
           <CardContent className="flex items-center gap-3 py-10 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
-            Carregando convite...
+            Carregando convite…
           </CardContent>
         </Card>
       </Centered>

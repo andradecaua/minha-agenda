@@ -117,12 +117,12 @@ export function ResetPasswordPage() {
         </CardHeader>
         <CardContent>
           {loading ? (
-            <p className="text-sm text-muted-foreground">Carregando...</p>
+            <p className="text-sm text-muted-foreground">Carregando…</p>
           ) : done ? (
             <div className="space-y-3">
               <p className="text-sm text-foreground">Senha atualizada.</p>
               <p className="text-xs text-muted-foreground">
-                Redirecionando pra tela de login...
+                Redirecionando pra tela de login…
               </p>
             </div>
           ) : !session && waitedForSdk ? (
@@ -169,7 +169,7 @@ export function ResetPasswordPage() {
                 </p>
               )}
               <Button type="submit" className="w-full" disabled={submitting}>
-                {submitting ? 'Salvando...' : 'Salvar nova senha'}
+                {submitting ? 'Salvando…' : 'Salvar nova senha'}
               </Button>
             </form>
           )}

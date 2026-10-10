@@ -308,7 +308,7 @@ export function ServiceForm({
           Cancelar
         </Button>
         <Button type="submit" disabled={submitting}>
-          {submitting ? 'Salvando...' : initial ? 'Salvar alterações' : 'Criar serviço'}
+          {submitting ? 'Salvando…' : initial ? 'Salvar alterações' : 'Criar serviço'}
         </Button>
       </div>
     </form>

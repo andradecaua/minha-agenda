@@ -92,7 +92,7 @@ export function LoginPage() {
             )}
 
             <Button type="submit" className="w-full" disabled={submitting}>
-              {submitting ? 'Entrando...' : 'Entrar'}
+              {submitting ? 'Entrando…' : 'Entrar'}
             </Button>
 
             <p className="text-center text-sm text-muted-foreground">

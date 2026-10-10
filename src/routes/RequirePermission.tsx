@@ -32,7 +32,7 @@ export function RequirePermission({ code }: RequirePermissionProps) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center gap-2 text-sm text-muted-foreground">
         <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-        Verificando plano...
+        Verificando plano…
       </div>
     )
   }
@@ -92,7 +92,7 @@ function UpgradePrompt({ code, currentPlanName }: UpgradePromptProps) {
             disabled={checkout.isPending}
           >
             {checkout.isPending
-              ? 'Abrindo checkout...'
+              ? 'Abrindo checkout…'
               : `Assinar ${upgradePlan.name}`}
           </Button>
         )}

@@ -210,7 +210,7 @@ export function SignupPage() {
             )}
 
             <Button type="submit" className="w-full" disabled={submitting}>
-              {submitting ? 'Criando...' : 'Criar conta'}
+              {submitting ? 'Criando…' : 'Criar conta'}
             </Button>
 
             <p className="text-center text-sm text-muted-foreground">

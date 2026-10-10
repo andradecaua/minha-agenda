@@ -59,7 +59,7 @@ export function ForgotPasswordPage() {
                 />
               </div>
               <Button type="submit" className="w-full" disabled={submitting}>
-                {submitting ? 'Enviando...' : 'Enviar link'}
+                {submitting ? 'Enviando…' : 'Enviar link'}
               </Button>
               <p className="text-center text-sm text-muted-foreground">
                 <Link to="/login" className="hover:underline">

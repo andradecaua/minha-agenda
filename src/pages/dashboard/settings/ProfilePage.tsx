@@ -407,7 +407,7 @@ export function ProfilePage() {
                 type="submit"
                 disabled={isSubmitting || !isDirty || slugCheck === 'taken'}
               >
-                {isSubmitting ? 'Salvando...' : 'Salvar alterações'}
+                {isSubmitting ? 'Salvando…' : 'Salvar alterações'}
               </Button>
             </div>
           </form>

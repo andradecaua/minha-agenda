@@ -51,7 +51,7 @@ export function ClientDetailPage() {
       <Card>
         <CardContent className="flex items-center gap-3 py-10 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
-          Carregando cliente...
+          Carregando cliente…
         </CardContent>
       </Card>
     )
@@ -104,7 +104,7 @@ export function ClientDetailPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>{client.name}</CardTitle>
+          <CardTitle className="break-words">{client.name}</CardTitle>
           <CardDescription>
             {client.phone ? formatPhoneBR(client.phone) : 'sem telefone'}
             {client.email ? ` · ${client.email}` : ''}
@@ -177,7 +177,7 @@ export function ClientDetailPage() {
               onClick={() => notesMutation.mutate(notes)}
               disabled={!notesChanged || notesMutation.isPending}
             >
-              {notesMutation.isPending ? 'Salvando...' : 'Salvar'}
+              {notesMutation.isPending ? 'Salvando…' : 'Salvar'}
             </Button>
           </div>
         </CardContent>

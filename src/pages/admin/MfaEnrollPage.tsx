@@ -101,7 +101,7 @@ export function MfaEnrollPage() {
         {state.stage === 'loading' && (
           <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
-            Gerando chave...
+            Gerando chave…
           </div>
         )}
 
@@ -153,7 +153,7 @@ export function MfaEnrollPage() {
                 className="w-full"
                 disabled={verifying || code.length !== 6}
               >
-                {verifying ? 'Verificando...' : 'Ativar MFA e continuar'}
+                {verifying ? 'Verificando…' : 'Ativar MFA e continuar'}
               </Button>
             </form>
 

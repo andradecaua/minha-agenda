@@ -140,7 +140,7 @@ export function PortfolioPage() {
               disabled={addMutation.isPending}
             >
               {addMutation.isPending ? (
-                'Enviando...'
+                'Enviando…'
               ) : (
                 <>
                   <Upload className="h-4 w-4" />
@@ -569,7 +569,7 @@ function EditDialog({ item, onClose, onSave, saving }: EditDialogProps) {
             }}
             disabled={saving}
           >
-            {saving ? 'Salvando...' : 'Salvar'}
+            {saving ? 'Salvando…' : 'Salvar'}
           </Button>
         </>
       }

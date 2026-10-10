@@ -106,7 +106,7 @@ export function ConfirmEmailScreen({ email, onEdit }: ConfirmEmailScreenProps) {
                 aria-hidden="true"
               />
               {resendState === 'sending'
-                ? 'Reenviando...'
+                ? 'Reenviando…'
                 : canResend
                   ? 'Reenviar e-mail'
                   : `Reenviar em ${secondsLeft}s`}

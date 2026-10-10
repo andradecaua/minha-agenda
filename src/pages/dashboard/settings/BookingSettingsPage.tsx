@@ -179,7 +179,7 @@ export function BookingSettingsPage() {
                 : 'Alterações são aplicadas após salvar.'}
             </span>
             <Button type="submit" disabled={isSubmitting || !isDirty}>
-              {isSubmitting ? 'Salvando...' : 'Salvar alterações'}
+              {isSubmitting ? 'Salvando…' : 'Salvar alterações'}
             </Button>
           </div>
         </form>

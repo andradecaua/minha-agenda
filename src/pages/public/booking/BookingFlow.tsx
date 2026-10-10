@@ -423,7 +423,7 @@ function ServicesStep({
                   {selected && <Check className="h-3.5 w-3.5" />}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="font-medium">{svc.name}</p>
+                  <p className="break-words font-medium">{svc.name}</p>
                   {svc.description && (
                     <p className="mt-0.5 line-clamp-2 text-sm text-muted-foreground">
                       {svc.description}
@@ -631,7 +631,7 @@ function DetailsStep({
       )}
 
       <Button type="submit" className="w-full" size="lg" disabled={submitting}>
-        {submitting ? 'Enviando...' : requireConfirmation ? 'Solicitar agendamento' : 'Confirmar agendamento'}
+        {submitting ? 'Enviando…' : requireConfirmation ? 'Solicitar agendamento' : 'Confirmar agendamento'}
       </Button>
     </form>
   )

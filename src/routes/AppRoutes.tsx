@@ -176,7 +176,7 @@ function RouteFallback() {
   return (
     <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
       <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
-      Carregando...
+      Carregando…
     </div>
   )
 }

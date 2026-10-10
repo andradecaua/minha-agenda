@@ -68,7 +68,7 @@ export function AdminPlansPage() {
         <Card>
           <CardContent className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
-            Carregando...
+            Carregando…
           </CardContent>
         </Card>
       ) : !plans || plans.length === 0 ? (
@@ -367,7 +367,7 @@ function PlanFormDialog({ mode, plan, onClose, onSaved }: PlanFormDialogProps) {
             Cancelar
           </Button>
           <Button onClick={(e) => handleSubmit(e as unknown as React.FormEvent)} disabled={saving}>
-            {saving ? 'Salvando...' : 'Salvar plano'}
+            {saving ? 'Salvando…' : 'Salvar plano'}
           </Button>
         </>
       }
@@ -380,7 +380,7 @@ function PlanFormDialog({ mode, plan, onClose, onSaved }: PlanFormDialogProps) {
               id="plan-code"
               value={form.code}
               onChange={(e) => setForm({ ...form, code: e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '') })}
-              placeholder="free, pro, business..."
+              placeholder="free, pro, business…"
               required
               disabled={mode === 'edit'}
             />
@@ -621,7 +621,7 @@ function PermissionsPicker({ catalog, loading, selected, onToggle }: Permissions
       {loading ? (
         <div className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
-          Carregando catálogo...
+          Carregando catálogo…
         </div>
       ) : grouped.length === 0 ? (
         <p className="py-3 text-sm text-muted-foreground">

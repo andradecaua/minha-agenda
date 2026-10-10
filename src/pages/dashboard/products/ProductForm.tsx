@@ -315,7 +315,7 @@ export function ProductForm({
           Cancelar
         </Button>
         <Button type="submit" disabled={submitting}>
-          {submitting ? 'Salvando...' : initial ? 'Salvar alterações' : 'Criar produto'}
+          {submitting ? 'Salvando…' : initial ? 'Salvar alterações' : 'Criar produto'}
         </Button>
       </div>
     </form>

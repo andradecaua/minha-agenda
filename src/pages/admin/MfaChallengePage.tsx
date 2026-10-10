@@ -80,7 +80,7 @@ export function MfaChallengePage() {
         {loading ? (
           <div className="flex items-center justify-center gap-2 py-6 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
-            Preparando...
+            Preparando…
           </div>
         ) : (
           <form onSubmit={handleVerify} className="space-y-3">
@@ -105,7 +105,7 @@ export function MfaChallengePage() {
               </p>
             )}
             <Button type="submit" className="w-full" disabled={verifying || code.length !== 6}>
-              {verifying ? 'Verificando...' : 'Verificar e entrar'}
+              {verifying ? 'Verificando…' : 'Verificar e entrar'}
             </Button>
           </form>
         )}

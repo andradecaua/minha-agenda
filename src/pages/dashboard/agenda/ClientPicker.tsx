@@ -110,7 +110,7 @@ export function ClientPicker({ clients, value, onChange }: ClientPickerProps) {
           aria-hidden="true"
         />
         <Input
-          placeholder="Buscar cliente por nome ou telefone..."
+          placeholder="Buscar cliente por nome ou telefone…"
           value={search}
           onChange={(e) => {
             setSearch(e.target.value)

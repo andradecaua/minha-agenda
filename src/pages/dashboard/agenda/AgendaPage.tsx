@@ -101,7 +101,7 @@ export function AgendaPage() {
           {isLoading ? (
             <Card>
               <CardContent className="py-10 text-center text-sm text-muted-foreground">
-                Carregando...
+                Carregando…
               </CardContent>
             </Card>
           ) : dayAppointments.length === 0 ? (
@@ -212,7 +212,9 @@ function AppointmentRow({ appointment, onClick }: AppointmentRowProps) {
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="font-medium">{appointment.client.name}</p>
+            <p className="min-w-0 break-words font-medium">
+              {appointment.client.name}
+            </p>
             <StatusChip status={appointment.status} />
           </div>
           <p className="mt-0.5 truncate text-sm text-muted-foreground">

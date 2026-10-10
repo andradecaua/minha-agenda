@@ -90,7 +90,7 @@ export function CheckoutRedirectPage() {
     <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-muted/30 px-4 text-center">
       <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-hidden="true" />
       <p className="text-sm text-muted-foreground">
-        Abrindo checkout seguro do Mercado Pago...
+        Abrindo checkout seguro do Mercado Pago…
       </p>
       <p className="text-xs text-muted-foreground/70">
         Você será redirecionado em instantes.

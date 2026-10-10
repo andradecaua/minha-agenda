@@ -238,7 +238,7 @@ function Hero({ avatarUrl, name, bio, city, phone, backgroundUrl }: HeroProps) {
 
       <div className="relative mx-auto flex max-w-6xl flex-col items-center px-4 pt-12 pb-8 text-center sm:px-6 sm:pt-16 lg:px-8 lg:pt-20 lg:pb-10">
         <Avatar url={avatarUrl} name={name} />
-        <h1 className="mt-6 text-3xl font-semibold tracking-tight sm:text-4xl lg:text-5xl">
+        <h1 className="mt-6 break-words text-balance text-3xl font-semibold tracking-tight sm:text-4xl lg:text-5xl">
           {name}
         </h1>
         {city && (
@@ -486,7 +486,7 @@ function ServiceCard({ service }: { service: Service }) {
         </div>
       )}
       <div className="min-w-0 flex-1">
-        <p className="font-medium leading-tight">{service.name}</p>
+        <p className="font-medium leading-tight break-words">{service.name}</p>
         {service.description && (
           <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
             {service.description}

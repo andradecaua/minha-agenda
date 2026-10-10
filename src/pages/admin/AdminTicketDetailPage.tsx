@@ -80,7 +80,7 @@ export function AdminTicketDetailPage() {
       <Card>
         <CardContent className="flex items-center gap-3 py-10 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
-          Carregando ticket...
+          Carregando ticket…
         </CardContent>
       </Card>
     )
@@ -183,7 +183,7 @@ export function AdminTicketDetailPage() {
           onChange={(e) => setReply(e.target.value)}
           maxLength={5000}
           rows={5}
-          placeholder="Escreva uma resposta ao usuário..."
+          placeholder="Escreva uma resposta ao usuário…"
           disabled={sending}
         />
         <p className="text-xs text-muted-foreground">

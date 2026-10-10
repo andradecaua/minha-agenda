@@ -129,7 +129,7 @@ export function DashboardHomePage() {
           <Card>
             <CardContent className="flex items-center gap-3 py-6 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
-              Carregando...
+              Carregando…
             </CardContent>
           </Card>
         ) : upcoming.length === 0 ? (
@@ -225,7 +225,7 @@ function StatsSkeleton() {
         <Card key={i}>
           <CardContent className="flex items-center gap-3 py-10 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
-            Carregando...
+            Carregando…
           </CardContent>
         </Card>
       ))}
@@ -331,7 +331,9 @@ function UpcomingRow({ appointment, onClick }: UpcomingRowProps) {
 
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <p className="font-medium">{appointment.client.name}</p>
+            <p className="min-w-0 break-words font-medium">
+              {appointment.client.name}
+            </p>
             <StatusChip status={appointment.status} />
           </div>
           <p className="mt-0.5 truncate text-sm text-muted-foreground">
