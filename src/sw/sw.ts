@@ -70,7 +70,19 @@ self.addEventListener('message', (event) => {
   }
 })
 
-// 6) Push handler
+// 6) Força ativação imediata — primeira vez que esse SW instala, ou
+//    sempre que uma versão nova chega, não ficamos presos em `waiting`.
+//    O PwaUpdateBanner continua funcionando pra avisar o user; ele só
+//    não é mais BLOQUEANTE pra features novas (ex: push) que precisam
+//    do SW novo pra funcionar no mesmo instante.
+self.addEventListener('install', () => {
+  void self.skipWaiting()
+})
+self.addEventListener('activate', (event) => {
+  event.waitUntil(self.clients.claim())
+})
+
+// 7) Push handler
 self.addEventListener('push', (event) => {
   const payload = parsePayload(event.data)
   if (!payload) return
@@ -85,7 +97,7 @@ self.addEventListener('push', (event) => {
   event.waitUntil(self.registration.showNotification(payload.title, options))
 })
 
-// 7) Click na notificação — foca aba existente ou abre
+// 8) Click na notificação — foca aba existente ou abre
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
   const target = (event.notification.data as { url?: string } | null)?.url ?? '/dashboard/agenda'

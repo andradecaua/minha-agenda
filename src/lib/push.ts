@@ -60,23 +60,39 @@ export async function enablePush(): Promise<PushStatus> {
   if (!isPushSupported()) return 'unsupported'
   if (!isPushConfigured()) return 'unconfigured'
 
+  console.debug('[push] 1/4 requestPermission')
   const permission = await Notification.requestPermission()
+  console.debug('[push] permission =', permission)
   if (permission !== 'granted') {
     return permission === 'denied' ? 'denied' : 'default'
   }
 
-  const reg = await navigator.serviceWorker.ready
+  console.debug('[push] 2/4 aguardando service worker ativar')
+  const reg = await withTimeout(
+    navigator.serviceWorker.ready,
+    15_000,
+    'serviceWorker.ready não resolveu em 15s — o service worker provavelmente não ativou. Recarregue a página e tente de novo.',
+  )
+  console.debug('[push] SW ativo:', reg.active?.scriptURL)
 
   // Se já tiver subscription, só re-registra no banco (idempotente).
+  console.debug('[push] 3/4 subscribe no PushManager')
   const existing = await reg.pushManager.getSubscription()
   const sub =
     existing ??
-    (await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlB64ToUint8Array(VAPID_PUBLIC_KEY as string),
-    }))
+    (await withTimeout(
+      reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlB64ToUint8Array(VAPID_PUBLIC_KEY as string),
+      }),
+      20_000,
+      'pushManager.subscribe demorou demais. Verifique a conexão e a VAPID_PUBLIC_KEY.',
+    ))
+  console.debug('[push] subscription endpoint:', sub.endpoint)
 
+  console.debug('[push] 4/4 register_push_subscription (RPC)')
   await persistSubscription(sub)
+  console.debug('[push] ok, inscrito')
   return 'subscribed'
 }
 
@@ -112,6 +128,22 @@ async function persistSubscription(sub: PushSubscription): Promise<void> {
       typeof navigator !== 'undefined' ? navigator.userAgent.slice(0, 255) : null,
   })
   if (error) throw error
+}
+
+function withTimeout<T>(p: Promise<T>, ms: number, msg: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(msg)), ms)
+    p.then(
+      (v) => {
+        clearTimeout(t)
+        resolve(v)
+      },
+      (e) => {
+        clearTimeout(t)
+        reject(e)
+      },
+    )
+  })
 }
 
 function urlB64ToUint8Array(base64: string): BufferSource {
