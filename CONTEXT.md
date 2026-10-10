@@ -667,6 +667,42 @@ Se faltar atualização, considere a entrega incompleta.
 
 ## Changelog
 
+- **2026-10-10** — **Dashboard: lista "Próximos agendamentos" (v0.4.11).**
+
+  Nova seção na home do dashboard (`DashboardHomePage`), entre o
+  banner de upgrade e os atalhos. Mostra até 5 próximos agendamentos
+  do profissional (status `pending` ou `confirmed`, `start_at >= now`,
+  ordem crescente). Cada linha: data+hora, cliente, serviço resumido,
+  duração, preço, chip de status. Click abre o `AppointmentDetailsDialog`
+  já existente (mesma UI usada na AgendaPage), permitindo confirmar/
+  concluir/cancelar sem sair da home. Link "Ver agenda" no header
+  da seção leva pra `/dashboard/agenda`.
+
+  Novo service `listUpcomingAppointments(professionalId, limit)` em
+  `src/services/appointments.ts` (reusa shape `AppointmentDetails`
+  com client + services joinados) e hook `useUpcomingAppointments`
+  (staleTime 30s, mesma `queryKey` prefix `['appointments', ...]`
+  dos outros — invalidações de mutação de status já pegam).
+
+- **2026-10-10** — **Relatórios admin: admins não contam como assinantes/pagantes (v0.4.10).**
+
+  Admins da plataforma (registros em `public.admin_users`) normalmente
+  têm um plano ativo pra testar features, mas são equipe interna —
+  não cliente pagante. Migration `0040_admin_reports_exclude_admins.sql`
+  recria duas RPCs excluindo-os das contagens de assinatura:
+
+  - `admin_metrics_overview.active_subscriptions` agora conta
+    `subscriptions.status='active'` **e** `user_id` fora de
+    `admin_users`. Demais números (`users_total`, `users_new_7d/30d`,
+    agendamentos, faturamento) ficam como estão — o pedido é sobre
+    "assinantes/pagantes" especificamente.
+  - `admin_list_plans.active_subscribers` (contagem por plano no card
+    de `AdminPlansPage`) idem.
+
+  Frontend: `AdminOverviewPage` troca o hint do card "Assinaturas
+  ativas" de "status = active" pra "exclui administradores" (o
+  antigo ficou enganoso).
+
 - **2026-10-09** — **Fix: picker de pro voltava pra services (v0.4.8).**
 
   O `useEffect` de reset do `BookingFlow` tinha `services` nas deps.

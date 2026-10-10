@@ -1,9 +1,12 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   ArrowRight,
   CalendarCheck,
   CalendarDays,
   CalendarPlus,
+  CalendarX,
+  Clock,
   Images,
   Loader2,
   Package,
@@ -17,13 +20,27 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useMyProfile } from '@/hooks/queries/useMyProfile'
 import { useDashboardStats } from '@/hooks/queries/useDashboardStats'
+import { useUpcomingAppointments } from '@/hooks/queries/useUpcomingAppointments'
 import { useMyPlan } from '@/hooks/queries/useMyPermissions'
-import { formatCurrencyBRL } from '@/lib/utils'
+import { formatCurrencyBRL, formatMinutesDuration, cn } from '@/lib/utils'
+import type { AppointmentDetails } from '@/services/appointments'
+import {
+  AppointmentDetailsDialog,
+  StatusChip,
+} from './agenda/AppointmentDetails'
 
 export function DashboardHomePage() {
   const { data: profile } = useMyProfile()
   const { data: stats, isLoading } = useDashboardStats(profile?.id)
+  const { data: upcoming, isLoading: upcomingLoading } = useUpcomingAppointments(
+    profile?.id,
+    5,
+  )
   const { data: myPlan } = useMyPlan()
+  const [openedId, setOpenedId] = useState<string | null>(null)
+  const opened = openedId
+    ? (upcoming ?? []).find((a) => a.id === openedId) ?? null
+    : null
 
   const greeting = useGreeting()
   const firstName = profile?.name.split(/\s+/)[0] ?? ''
@@ -94,6 +111,53 @@ export function DashboardHomePage() {
       )}
 
       {showUpgradeBanner && <UpgradeBanner />}
+
+      <section>
+        <div className="mb-3 flex items-end justify-between gap-3">
+          <h2 className="text-sm font-medium text-muted-foreground">
+            Próximos agendamentos
+          </h2>
+          <Link
+            to="/dashboard/agenda"
+            className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+          >
+            Ver agenda
+            <ArrowRight className="h-3 w-3" aria-hidden="true" />
+          </Link>
+        </div>
+        {upcomingLoading || !upcoming ? (
+          <Card>
+            <CardContent className="flex items-center gap-3 py-6 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Carregando...
+            </CardContent>
+          </Card>
+        ) : upcoming.length === 0 ? (
+          <Card>
+            <CardContent className="flex flex-col items-center py-8 text-center text-sm text-muted-foreground">
+              <CalendarX className="mb-2 h-6 w-6" aria-hidden="true" />
+              Nenhum agendamento futuro.
+            </CardContent>
+          </Card>
+        ) : (
+          <ul className="space-y-2">
+            {upcoming.map((a) => (
+              <li key={a.id}>
+                <UpcomingRow
+                  appointment={a}
+                  onClick={() => setOpenedId(a.id)}
+                />
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <AppointmentDetailsDialog
+        open={!!opened}
+        onClose={() => setOpenedId(null)}
+        appointment={opened}
+      />
 
       <section>
         <h2 className="mb-3 text-sm font-medium text-muted-foreground">
@@ -214,6 +278,78 @@ function UpgradeBanner() {
         <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
       </span>
     </Link>
+  )
+}
+
+interface UpcomingRowProps {
+  appointment: AppointmentDetails
+  onClick: () => void
+}
+
+function UpcomingRow({ appointment, onClick }: UpcomingRowProps) {
+  const start = new Date(appointment.start_at)
+  const end = new Date(appointment.end_at)
+  const dateLabel = start.toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: 'short',
+  })
+  const weekday = start.toLocaleDateString('pt-BR', { weekday: 'short' })
+  const time = start.toLocaleTimeString('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+  const endTime = end.toLocaleTimeString('pt-BR', {
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+
+  const servicesSummary =
+    appointment.services.length === 1
+      ? appointment.services[0]!.service.name
+      : `${appointment.services[0]!.service.name} +${appointment.services.length - 1}`
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'w-full rounded-xl border bg-background p-4 text-left transition-colors',
+        'hover:border-foreground/20 hover:bg-accent/40',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+      )}
+    >
+      <div className="flex items-start gap-4">
+        <div className="shrink-0 text-center">
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            {weekday.replace('.', '')}
+          </p>
+          <p className="text-sm font-semibold leading-none">{dateLabel}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {time}–{endTime}
+          </p>
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="font-medium">{appointment.client.name}</p>
+            <StatusChip status={appointment.status} />
+          </div>
+          <p className="mt-0.5 truncate text-sm text-muted-foreground">
+            {servicesSummary}
+          </p>
+          <p className="mt-1 inline-flex items-center gap-1 text-xs text-muted-foreground">
+            <Clock className="h-3 w-3" aria-hidden="true" />
+            {formatMinutesDuration(appointment.total_duration_minutes)}
+          </p>
+        </div>
+
+        <div className="shrink-0 text-right">
+          <p className="font-semibold">
+            {formatCurrencyBRL(appointment.total_price_cents)}
+          </p>
+        </div>
+      </div>
+    </button>
   )
 }
 

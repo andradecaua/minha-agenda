@@ -56,7 +56,7 @@ export function AdminOverviewPage() {
           <section>
             <h2 className="mb-3 text-sm font-medium text-muted-foreground">Assinaturas</h2>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <StatCard icon={Package} label="Assinaturas ativas" value={String(data.active_subscriptions)} hint="status = active" />
+              <StatCard icon={Package} label="Assinaturas ativas" value={String(data.active_subscriptions)} hint="exclui administradores" />
               <StatCard icon={Package} label="Planos ativos" value={String(data.plans_active)} hint="disponíveis para contratar" />
               <StatCard icon={Users} label="Clientes totais" value={String(data.clients_total)} hint="somando todos os profissionais" />
               <StatCard icon={CalendarCheck} label="Agendamentos totais" value={String(data.appointments_total)} hint="histórico completo" />

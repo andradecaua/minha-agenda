@@ -94,6 +94,42 @@ export async function listAppointmentsRange(
   return list
 }
 
+/**
+ * Próximos agendamentos a partir de agora, limitado a `limit`.
+ * Status considerados: `pending` e `confirmed` (os que de fato
+ * vão acontecer). Ordem crescente por `start_at`.
+ */
+export async function listUpcomingAppointments(
+  professionalId: string,
+  limit: number,
+): Promise<AppointmentDetails[]> {
+  const { data, error } = await supabase
+    .from('appointments')
+    .select(
+      `
+      *,
+      client:clients(id, name, phone, email),
+      services:appointment_services(
+        id, position, price_cents_snapshot, duration_minutes_snapshot,
+        service:services(id, name)
+      )
+    `,
+    )
+    .eq('professional_id', professionalId)
+    .in('status', ['pending', 'confirmed'])
+    .gte('start_at', new Date().toISOString())
+    .order('start_at', { ascending: true })
+    .limit(limit)
+
+  if (error) throw error
+
+  const list = (data ?? []) as unknown as AppointmentDetails[]
+  for (const a of list) {
+    a.services = [...(a.services ?? [])].sort((x, y) => x.position - y.position)
+  }
+  return list
+}
+
 export async function updateAppointmentStatus(
   id: string,
   status: AppointmentStatus,
